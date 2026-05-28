@@ -2,11 +2,12 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
+import Dias
 
 Dialog {
     id: dialog
     modal: true
-    width: 440
+    width: 460
     padding: 0
     title: editingId > 0 ? "Edit task" : "New task"
 
@@ -17,11 +18,7 @@ Dialog {
     function openFor(id, text, due, hasDue) {
         editingId = id;
         textField.text = text;
-        if (hasDue) {
-            dueField.text = Qt.formatDateTime(due, "yyyy-MM-dd HH:mm");
-        } else {
-            dueField.text = "";
-        }
+        dueField.text = hasDue ? Qt.formatDateTime(due, "yyyy-MM-dd HH:mm") : "";
         open();
         Qt.callLater(function() {
             textField.forceActiveFocus();
@@ -38,9 +35,7 @@ Dialog {
         return isNaN(dt.getTime()) ? null : dt;
     }
 
-    function _dueValid() {
-        return dueField.text === "" || _parse(dueField.text) !== null;
-    }
+    function _dueValid() { return dueField.text === "" || _parse(dueField.text) !== null; }
 
     function _commit() {
         if (!saveBtn.enabled) return;
@@ -51,35 +46,39 @@ Dialog {
     }
 
     background: Rectangle {
-        color: Material.theme === Material.Dark ? "#1e1e2e" : "#ffffff"
-        radius: 16
-        border.color: Material.theme === Material.Dark ? "#313244" : "#dce0e8"
+        color: Theme.surface
+        radius: Theme.radiusCard
+        border.color: Theme.border
         border.width: 1
     }
 
     header: Item {
-        implicitHeight: 56
+        implicitHeight: 64
         Text {
             anchors.left: parent.left
-            anchors.leftMargin: 24
+            anchors.leftMargin: Theme.sp6
             anchors.verticalCenter: parent.verticalCenter
             text: dialog.title
-            font.pixelSize: 18
-            font.weight: Font.DemiBold
-            color: Material.foreground
+            font.family: Theme.sansStack[0]
+            font.pixelSize: Theme.textTitle
+            font.weight: Theme.weightBold
+            color: Theme.fg
         }
     }
 
     contentItem: ColumnLayout {
-        spacing: 14
+        spacing: Theme.sp3
 
         TextField {
             id: textField
             Layout.fillWidth: true
-            Layout.leftMargin: 24
-            Layout.rightMargin: 24
+            Layout.leftMargin: Theme.sp6
+            Layout.rightMargin: Theme.sp6
             placeholderText: "What"
-            font.pixelSize: 16
+            font.family: Theme.sansStack[0]
+            font.pixelSize: Theme.textInput
+            Material.accent: Theme.accent
+            color: Theme.fg
             Keys.onReturnPressed: dialog._commit()
             Keys.onEnterPressed: dialog._commit()
         }
@@ -87,31 +86,33 @@ Dialog {
         TextField {
             id: dueField
             Layout.fillWidth: true
-            Layout.leftMargin: 24
-            Layout.rightMargin: 24
+            Layout.leftMargin: Theme.sp6
+            Layout.rightMargin: Theme.sp6
             placeholderText: "Due (yyyy-MM-dd HH:mm) — blank for no due"
-            font.family: "monospace"
-            color: dialog._dueValid() ? Material.foreground : "#f38ba8"
+            font.family: Theme.monoStack[0]
+            font.pixelSize: Theme.textBody
+            Material.accent: Theme.accent
+            color: dialog._dueValid() ? Theme.fg : Theme.error
             Keys.onReturnPressed: dialog._commit()
             Keys.onEnterPressed: dialog._commit()
         }
 
-        Item { Layout.preferredHeight: 4 }
+        Item { Layout.preferredHeight: Theme.sp1 }
     }
 
     footer: Item {
-        implicitHeight: 60
+        implicitHeight: 64
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 16
-            spacing: 8
+            anchors.leftMargin: Theme.sp4
+            anchors.rightMargin: Theme.sp4
+            spacing: Theme.sp2
 
             Button {
                 text: "Delete"
                 visible: dialog.editingId > 0
                 flat: true
-                Material.foreground: "#f38ba8"
+                Material.foreground: Theme.error
                 onClicked: {
                     dialog.removed(dialog.editingId);
                     dialog.close();
@@ -121,12 +122,15 @@ Dialog {
             Button {
                 text: "Cancel"
                 flat: true
+                Material.foreground: Theme.fgMuted
                 onClicked: dialog.close()
             }
             Button {
                 id: saveBtn
                 text: "Save"
                 highlighted: true
+                Material.accent: Theme.accent
+                Material.foreground: Theme.onAccent
                 enabled: textField.text.trim() !== "" && dialog._dueValid()
                 onClicked: dialog._commit()
             }

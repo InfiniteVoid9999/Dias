@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
+import Dias
 
 Item {
     id: root
@@ -11,21 +12,40 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 20
-        spacing: 12
+        anchors.leftMargin: Theme.sp5
+        anchors.rightMargin: Theme.sp5
+        anchors.topMargin: Theme.sp6
+        anchors.bottomMargin: Theme.sp5
+        spacing: Theme.sp3
 
         RowLayout {
             Layout.fillWidth: true
+            spacing: Theme.sp2
+
             Text {
                 text: "To Do"
-                font.pixelSize: 18
-                font.weight: Font.DemiBold
-                color: Material.foreground
+                font.family: Theme.sansStack[0]
+                font.pixelSize: Theme.textTitle
+                font.weight: Theme.weightBold
+                color: Theme.fg
+            }
+            Text {
+                visible: list.count > 0
+                text: list.count + ""
+                font.family: Theme.sansStack[0]
+                font.pixelSize: Theme.textCaption
+                font.weight: Theme.weightMedium
+                color: Theme.fgSubtle
             }
             Item { Layout.fillWidth: true }
-            Button {
-                text: "+ add"
-                flat: true
+            ToolButton {
+                text: "add"
+                font.family: Theme.iconFont
+                font.pixelSize: 22
+                Material.foreground: Theme.fgMuted
+                ToolTip.visible: hovered
+                ToolTip.delay: 600
+                ToolTip.text: "Add task"
                 onClicked: root.addRequested()
             }
         }
@@ -35,15 +55,16 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            spacing: 4
+            spacing: Theme.sp1
             model: TaskModel
+            boundsBehavior: Flickable.StopAtBounds
 
             ScrollBar.vertical: ScrollBar {}
 
             delegate: Item {
                 id: rowItem
                 width: list.width
-                height: 36
+                height: 40
 
                 required property int id
                 required property string text
@@ -52,21 +73,22 @@ Item {
                 required property bool done
 
                 Rectangle {
-                    id: bg
                     anchors.fill: parent
-                    radius: 8
-                    color: hover.hovered ? Qt.alpha(Material.foreground, 0.06) : "transparent"
+                    radius: Theme.radiusRow
+                    color: hover.hovered ? Theme.hoverTint : "transparent"
+                    Behavior on color { ColorAnimation { duration: 120 } }
                     HoverHandler { id: hover }
                 }
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.leftMargin: 8
-                    anchors.rightMargin: 8
-                    spacing: 10
+                    anchors.leftMargin: Theme.sp1
+                    anchors.rightMargin: Theme.sp2
+                    spacing: Theme.sp2
 
                     CheckBox {
                         checked: rowItem.done
+                        Material.accent: Theme.accent
                         onToggled: TaskModel.setDone(rowItem.id, checked)
                     }
 
@@ -76,25 +98,35 @@ Item {
 
                         RowLayout {
                             anchors.fill: parent
-                            spacing: 8
+                            spacing: Theme.sp2
+
                             Text {
                                 Layout.fillWidth: true
                                 text: rowItem.text
-                                font.pixelSize: 13
-                                color: Material.foreground
-                                opacity: rowItem.done ? 0.45 : 1.0
+                                font.family: Theme.sansStack[0]
+                                font.pixelSize: Theme.textBody
+                                font.weight: Theme.weightRegular
+                                color: Theme.fg
+                                opacity: rowItem.done ? Theme.doneOpacity : 1.0
                                 font.strikeout: rowItem.done
                                 elide: Text.ElideRight
                                 verticalAlignment: Text.AlignVCenter
                             }
-                            Text {
+                            Rectangle {
                                 visible: rowItem.hasDue
-                                text: Qt.formatDateTime(rowItem.due, "ddd HH:mm")
-                                font.pixelSize: 11
-                                font.family: "monospace"
-                                color: Material.foreground
-                                opacity: 0.55
-                                verticalAlignment: Text.AlignVCenter
+                                Layout.alignment: Qt.AlignVCenter
+                                implicitWidth: chipText.implicitWidth + Theme.sp3
+                                implicitHeight: 20
+                                radius: Theme.radiusPill
+                                color: Theme.surface
+                                Text {
+                                    id: chipText
+                                    anchors.centerIn: parent
+                                    text: rowItem.hasDue ? Qt.formatDateTime(rowItem.due, "ddd HH:mm") : ""
+                                    font.family: Theme.monoStack[0]
+                                    font.pixelSize: Theme.textCaption
+                                    color: Theme.fgMuted
+                                }
                             }
                         }
 
@@ -107,14 +139,28 @@ Item {
                 }
             }
 
-            Text {
+            // empty state
+            Column {
                 anchors.centerIn: parent
                 visible: list.count === 0
-                text: "no tasks\n+ add one"
-                color: Material.foreground
-                opacity: 0.35
-                font.pixelSize: 13
-                horizontalAlignment: Text.AlignHCenter
+                spacing: Theme.sp2
+
+                Text {
+                    text: "check_circle"
+                    font.family: Theme.iconFont
+                    font.pixelSize: 36
+                    color: Theme.fgSubtle
+                    horizontalAlignment: Text.AlignHCenter
+                    anchors.horizontalCenter: parent.horizontalCenter
+                }
+                Text {
+                    text: "nothing to do"
+                    font.family: Theme.sansStack[0]
+                    font.pixelSize: Theme.textBody
+                    color: Theme.fgSubtle
+                    horizontalAlignment: Text.AlignHCenter
+                    anchors.horizontalCenter: parent.horizontalCenter
+                }
             }
         }
     }

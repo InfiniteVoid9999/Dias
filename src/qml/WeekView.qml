@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
+import Dias
 
 Item {
     id: root
@@ -8,59 +9,42 @@ Item {
     property date viewStart: EventModel.viewStart
     property int dayCount: EventModel.viewDays
     property real hourHeight: 56
-    readonly property real axisWidth: 56
-    readonly property real headerHeight: 60
+    readonly property real axisWidth: 60
+    readonly property real headerHeight: 64
 
     signal createAt(date day, int hour)
     signal editEvent(int id, string evTitle, date start, date end, string category)
     signal editTask(int id, string taskText, date due, bool hasDue)
 
-    function _localMidnight(d) {
-        var x = new Date(d);
-        x.setHours(0, 0, 0, 0);
-        return x;
-    }
-
+    // ---- date helpers ----
+    function _localMidnight(d) { var x = new Date(d); x.setHours(0,0,0,0); return x; }
     function _mondayOf(d) {
         var x = _localMidnight(d);
         var dow = (x.getDay() + 6) % 7;
         x.setDate(x.getDate() - dow);
         return x;
     }
-
     function next() {
-        var d = new Date(root.viewStart);
-        d.setDate(d.getDate() + root.dayCount);
+        var d = new Date(root.viewStart); d.setDate(d.getDate() + root.dayCount);
         EventModel.viewStart = d;
     }
     function prev() {
-        var d = new Date(root.viewStart);
-        d.setDate(d.getDate() - root.dayCount);
+        var d = new Date(root.viewStart); d.setDate(d.getDate() - root.dayCount);
         EventModel.viewStart = d;
     }
     function gotoToday() {
-        EventModel.viewStart = root.dayCount === 1
-                               ? _localMidnight(new Date())
-                               : _mondayOf(new Date());
+        EventModel.viewStart = root.dayCount === 1 ? _localMidnight(new Date()) : _mondayOf(new Date());
     }
-
     function _dayIndex(d) {
         var a = _localMidnight(root.viewStart);
         var b = _localMidnight(d);
         return Math.round((b - a) / 86400000);
     }
 
-    function _inRange(d) {
-        var i = _dayIndex(d);
-        return i >= 0 && i < root.dayCount;
-    }
-
     readonly property var _weekdayShort: ["MON","TUE","WED","THU","FRI","SAT","SUN"]
-    function _weekdayLabel(jsDay) {
-        // js Date.getDay: Sun=0..Sat=6  →  remap to Mon=0..Sun=6
-        return _weekdayShort[(jsDay + 6) % 7];
-    }
+    function _weekdayLabel(jsDay) { return _weekdayShort[(jsDay + 6) % 7]; }
 
+    // ---- header: weekday + date pill per column ----
     Row {
         id: headerRow
         x: root.axisWidth
@@ -88,26 +72,28 @@ Item {
 
                 Column {
                     anchors.centerIn: parent
-                    spacing: 4
+                    spacing: Theme.sp1
                     Text {
                         text: root._weekdayLabel(parent.parent.day.getDay())
-                        font.pixelSize: 11
-                        font.weight: Font.Medium
+                        font.family: Theme.sansStack[0]
+                        font.pixelSize: Theme.textCaption
+                        font.weight: Theme.weightMedium
                         font.letterSpacing: 1.2
-                        opacity: 0.55
-                        color: Material.foreground
+                        color: parent.parent.isToday ? Theme.accent : Theme.fgMuted
                         anchors.horizontalCenter: parent.horizontalCenter
                     }
                     Rectangle {
-                        width: 32; height: 32; radius: 16
-                        color: parent.parent.isToday ? Material.accent : "transparent"
+                        width: 34; height: 34
+                        radius: Theme.radiusPill
+                        color: parent.parent.isToday ? Theme.accent : "transparent"
                         anchors.horizontalCenter: parent.horizontalCenter
                         Text {
                             anchors.centerIn: parent
                             text: parent.parent.parent.day.getDate()
+                            font.family: Theme.sansStack[0]
                             font.pixelSize: 16
-                            font.weight: Font.Medium
-                            color: parent.parent.parent.isToday ? "#11111b" : Material.foreground
+                            font.weight: Theme.weightMedium
+                            color: parent.parent.parent.isToday ? Theme.onAccent : Theme.fg
                         }
                     }
                 }
@@ -120,8 +106,7 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         height: 1
-        color: Material.foreground
-        opacity: 0.08
+        color: Theme.divider
     }
 
     Flickable {
@@ -145,22 +130,23 @@ Item {
 
             readonly property real laneWidth: (width - root.axisWidth) / root.dayCount
 
+            // hour axis labels (tabular mono)
             Repeater {
                 model: 24
                 Text {
                     x: 4
                     y: index * root.hourHeight - height / 2
-                    width: root.axisWidth - 8
+                    width: root.axisWidth - Theme.sp2
                     text: (index < 10 ? "0" : "") + index
-                    color: Material.foreground
-                    opacity: 0.45
-                    font.pixelSize: 11
-                    font.family: "monospace"
+                    color: Theme.fgSubtle
+                    font.family: Theme.monoStack[0]
+                    font.pixelSize: Theme.textCaption
                     horizontalAlignment: Text.AlignRight
                     visible: index > 0
                 }
             }
 
+            // hour gridlines
             Repeater {
                 model: 25
                 Rectangle {
@@ -168,11 +154,11 @@ Item {
                     y: index * root.hourHeight
                     width: gridContent.width - root.axisWidth
                     height: 1
-                    color: Material.foreground
-                    opacity: 0.06
+                    color: Theme.gridLine
                 }
             }
 
+            // day-column lanes + click-to-create
             Row {
                 x: root.axisWidth
                 width: gridContent.width - root.axisWidth
@@ -194,14 +180,13 @@ Item {
 
                         Rectangle {
                             visible: index > 0
-                            width: 1
-                            height: parent.height
-                            color: Material.foreground
-                            opacity: 0.06
+                            width: 1; height: parent.height
+                            color: Theme.gridLine
                         }
 
                         MouseArea {
                             anchors.fill: parent
+                            hoverEnabled: true
                             onClicked: function(mouse) {
                                 var hour = Math.max(0, Math.min(23, Math.floor(mouse.y / root.hourHeight)));
                                 root.createAt(dayCol.day, hour);
@@ -211,6 +196,7 @@ Item {
                 }
             }
 
+            // event blocks
             Repeater {
                 model: EventModel
                 delegate: Rectangle {
@@ -226,18 +212,19 @@ Item {
                     readonly property real rawDurHours: Math.max(0.25, (end - start) / 3600000)
                     readonly property real durHours: Math.min(rawDurHours, 24 - startHours)
                     readonly property int col: root._dayIndex(start)
-                    readonly property color baseColor: source === "agent" ? "#f9e2af"
-                                                     : source === "gcal"  ? "#89dceb"
-                                                                          : Material.accent
+                    readonly property color baseColor: Theme.categoryColor(category, source)
+                    readonly property color textOn: Theme.onAccent
 
-                    x: root.axisWidth + col * gridContent.laneWidth + 3
+                    x: root.axisWidth + col * gridContent.laneWidth + Theme.sp1
                     y: startHours * root.hourHeight
-                    width: gridContent.laneWidth - 6
-                    height: Math.max(durHours * root.hourHeight - 2, 22)
+                    width: gridContent.laneWidth - Theme.sp2
+                    height: Math.max(durHours * root.hourHeight - 2, 24)
                     visible: col >= 0 && col < root.dayCount
-                    radius: 6
-                    color: Qt.alpha(baseColor, 0.85)
+                    radius: Theme.radiusEvent
+                    color: Qt.alpha(baseColor, hoverHandler.hovered ? 1.0 : 0.88)
+                    Behavior on color { ColorAnimation { duration: 120 } }
 
+                    // leading accent bar
                     Rectangle {
                         anchors.left: parent.left
                         anchors.top: parent.top
@@ -247,19 +234,35 @@ Item {
                         radius: 1.5
                     }
 
-                    Text {
+                    Column {
                         anchors.fill: parent
-                        anchors.margins: 6
-                        anchors.leftMargin: 10
-                        text: block.title === "" ? "(untitled)" : block.title
-                        color: "#11111b"
-                        font.pixelSize: 12
-                        font.weight: Font.Medium
-                        wrapMode: Text.Wrap
-                        elide: Text.ElideRight
-                        verticalAlignment: Text.AlignTop
+                        anchors.margins: Theme.sp1 + 2
+                        anchors.leftMargin: Theme.sp2 + 4
+                        spacing: 2
+
+                        Text {
+                            width: parent.width
+                            text: block.title === "" ? "(untitled)" : block.title
+                            color: block.textOn
+                            font.family: Theme.sansStack[0]
+                            font.pixelSize: Theme.textBody
+                            font.weight: Theme.weightMedium
+                            wrapMode: Text.Wrap
+                            elide: Text.ElideRight
+                            maximumLineCount: block.height > 44 ? 3 : 1
+                        }
+                        Text {
+                            visible: block.height > 36
+                            width: parent.width
+                            text: Qt.formatTime(block.start, "HH:mm") + " – " + Qt.formatTime(block.end, "HH:mm")
+                            color: block.textOn
+                            opacity: 0.7
+                            font.family: Theme.monoStack[0]
+                            font.pixelSize: Theme.textCaption - 1
+                        }
                     }
 
+                    HoverHandler { id: hoverHandler }
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
@@ -268,6 +271,7 @@ Item {
                 }
             }
 
+            // task pills
             Repeater {
                 model: TaskModel
                 delegate: Item {
@@ -280,44 +284,49 @@ Item {
 
                     readonly property int col: hasDue ? root._dayIndex(due) : -1
                     readonly property real startHours: hasDue ? (due.getHours() + due.getMinutes() / 60) : 0
+                    readonly property color baseColor: done ? Theme.taskDone : Theme.taskPending
 
                     visible: hasDue && col >= 0 && col < root.dayCount
-                    x: root.axisWidth + col * gridContent.laneWidth + 3
+                    x: root.axisWidth + col * gridContent.laneWidth + Theme.sp1
                     y: startHours * root.hourHeight
-                    width: gridContent.laneWidth - 6
-                    height: 24
+                    width: gridContent.laneWidth - Theme.sp2
+                    height: 26
 
                     Rectangle {
                         anchors.fill: parent
-                        radius: 12
-                        color: Qt.alpha(pill.done ? "#a6e3a1" : "#fab387", 0.85)
+                        radius: Theme.radiusPill
+                        color: Qt.alpha(pill.baseColor, hover.hovered ? 1.0 : 0.85)
+                        Behavior on color { ColorAnimation { duration: 120 } }
 
                         Rectangle {
                             anchors.left: parent.left
                             anchors.verticalCenter: parent.verticalCenter
-                            anchors.leftMargin: 6
-                            width: 12; height: 12; radius: 6
-                            border.color: "#11111b"
+                            anchors.leftMargin: 7
+                            width: 13; height: 13
+                            radius: Theme.radiusPill
+                            border.color: Theme.onTaskPill
                             border.width: 1.4
-                            color: pill.done ? "#11111b" : "transparent"
+                            color: pill.done ? Theme.onTaskPill : "transparent"
                         }
 
                         Text {
                             anchors.left: parent.left
                             anchors.right: parent.right
                             anchors.verticalCenter: parent.verticalCenter
-                            anchors.leftMargin: 24
-                            anchors.rightMargin: 8
+                            anchors.leftMargin: 26
+                            anchors.rightMargin: Theme.sp2
                             text: pill.text
-                            color: "#11111b"
-                            opacity: pill.done ? 0.5 : 1.0
-                            font.pixelSize: 11
-                            font.weight: Font.Medium
+                            color: Theme.onTaskPill
+                            opacity: pill.done ? Theme.doneOpacity : 1.0
+                            font.family: Theme.sansStack[0]
+                            font.pixelSize: Theme.textCaption + 1
+                            font.weight: Theme.weightMedium
                             font.strikeout: pill.done
                             elide: Text.ElideRight
                             verticalAlignment: Text.AlignVCenter
                         }
 
+                        HoverHandler { id: hover }
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
@@ -327,6 +336,7 @@ Item {
                 }
             }
 
+            // now-line
             Item {
                 id: nowMarker
                 property date now: new Date()
@@ -343,13 +353,14 @@ Item {
                 Rectangle {
                     width: parent.width
                     height: 2
-                    color: Material.accent
+                    color: Theme.accent
                 }
                 Rectangle {
-                    width: 8; height: 8; radius: 4
-                    color: Material.accent
-                    y: -3
-                    x: -4
+                    width: 10; height: 10
+                    radius: Theme.radiusPill
+                    color: Theme.accent
+                    y: -4
+                    x: -5
                 }
 
                 Timer {

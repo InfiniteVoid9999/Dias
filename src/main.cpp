@@ -9,8 +9,10 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QQmlError>
 #include <QQuickStyle>
 #include <QTimer>
+#include <QUrl>
 
 #include <cstdio>
 #include <string>
@@ -68,11 +70,27 @@ int main(int argc, char* argv[]) {
     }
 
     QQmlApplicationEngine engine;
+    QObject::connect(&engine, &QQmlApplicationEngine::warnings,
+        [](const QList<QQmlError>& warnings) {
+            for (const QQmlError& w : warnings) {
+                std::fprintf(stderr, "[qml] %s\n", w.toString().toUtf8().constData());
+            }
+            std::fflush(stderr);
+        });
+    QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed,
+        [](const QUrl& url) {
+            std::fprintf(stderr, "[qml] objectCreationFailed: %s\n", url.toString().toUtf8().constData());
+            std::fflush(stderr);
+        });
     engine.rootContext()->setContextProperty("EventModel", &eventModel);
     engine.rootContext()->setContextProperty("TaskModel",  &taskModel);
     engine.rootContext()->setContextProperty("Exporter",   &exporter);
     engine.loadFromModule("Dias", "Main");
-    if (engine.rootObjects().isEmpty()) return 1;
+    if (engine.rootObjects().isEmpty()) {
+        std::fprintf(stderr, "[dias] root objects empty -- QML load failed\n");
+        std::fflush(stderr);
+        return 1;
+    }
 
     if (qmlcheck) {
         // Load QML, spin the loop for 1.5s to surface any deferred warnings,

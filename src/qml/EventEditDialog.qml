@@ -2,11 +2,12 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
+import Dias
 
 Dialog {
     id: dialog
     modal: true
-    width: 460
+    width: 480
     padding: 0
     title: editingId > 0 ? "Edit event" : "New event"
 
@@ -30,12 +31,10 @@ Dialog {
     function _parse(s) {
         var m = (s || "").match(/^\s*(\d{4})-(\d{1,2})-(\d{1,2})[\sT]+(\d{1,2}):(\d{1,2})\s*$/);
         if (!m) return null;
-        var y  = +m[1], mo = +m[2], d  = +m[3];
-        var h  = +m[4], mi = +m[5];
+        var y  = +m[1], mo = +m[2], d  = +m[3], h  = +m[4], mi = +m[5];
         if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59) return null;
         var dt = new Date(y, mo - 1, d, h, mi, 0, 0);
-        if (isNaN(dt.getTime())) return null;
-        return dt;
+        return isNaN(dt.getTime()) ? null : dt;
     }
 
     function _commit() {
@@ -48,67 +47,77 @@ Dialog {
     }
 
     background: Rectangle {
-        color: Material.theme === Material.Dark ? "#1e1e2e" : "#ffffff"
-        radius: 16
-        border.color: Material.theme === Material.Dark ? "#313244" : "#dce0e8"
+        color: Theme.surface
+        radius: Theme.radiusCard
+        border.color: Theme.border
         border.width: 1
     }
 
     header: Item {
-        implicitHeight: 56
+        implicitHeight: 64
         Text {
             anchors.left: parent.left
-            anchors.leftMargin: 24
+            anchors.leftMargin: Theme.sp6
             anchors.verticalCenter: parent.verticalCenter
             text: dialog.title
-            font.pixelSize: 18
-            font.weight: Font.DemiBold
-            color: Material.foreground
+            font.family: Theme.sansStack[0]
+            font.pixelSize: Theme.textTitle
+            font.weight: Theme.weightBold
+            color: Theme.fg
         }
     }
 
     contentItem: ColumnLayout {
-        spacing: 14
+        spacing: Theme.sp3
 
         TextField {
             id: titleField
             Layout.fillWidth: true
-            Layout.leftMargin: 24
-            Layout.rightMargin: 24
+            Layout.leftMargin: Theme.sp6
+            Layout.rightMargin: Theme.sp6
             placeholderText: "Title"
-            font.pixelSize: 16
+            font.family: Theme.sansStack[0]
+            font.pixelSize: Theme.textInput
+            Material.accent: Theme.accent
+            Material.foreground: Theme.fg
+            color: Theme.fg
             Keys.onReturnPressed: dialog._commit()
             Keys.onEnterPressed: dialog._commit()
         }
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.leftMargin: 24
-            Layout.rightMargin: 24
-            spacing: 8
+            Layout.leftMargin: Theme.sp6
+            Layout.rightMargin: Theme.sp6
+            spacing: Theme.sp2
 
             TextField {
                 id: startField
                 Layout.fillWidth: true
                 placeholderText: "yyyy-MM-dd HH:mm"
-                font.family: "monospace"
+                font.family: Theme.monoStack[0]
+                font.pixelSize: Theme.textBody
+                Material.accent: Theme.accent
                 property bool dateValid: dialog._parse(text) !== null
-                color: text === "" || dateValid ? Material.foreground : "#f38ba8"
+                color: text === "" || dateValid ? Theme.fg : Theme.error
                 Keys.onReturnPressed: dialog._commit()
                 Keys.onEnterPressed: dialog._commit()
             }
             Text {
-                text: "→"
-                color: Material.foreground
-                opacity: 0.45
+                text: "arrow_forward"
+                font.family: Theme.iconFont
+                font.pixelSize: 18
+                color: Theme.fgSubtle
             }
             TextField {
                 id: endField
                 Layout.fillWidth: true
                 placeholderText: "yyyy-MM-dd HH:mm"
-                font.family: "monospace"
+                font.family: Theme.monoStack[0]
+                font.pixelSize: Theme.textBody
+                Material.accent: Theme.accent
                 property bool dateValid: dialog._parse(text) !== null
-                color: text === "" || dateValid ? Material.foreground : "#f38ba8"
+                color: text === "" || dateValid ? Theme.fg : Theme.error
                 Keys.onReturnPressed: dialog._commit()
                 Keys.onEnterPressed: dialog._commit()
             }
@@ -117,29 +126,33 @@ Dialog {
         TextField {
             id: categoryField
             Layout.fillWidth: true
-            Layout.leftMargin: 24
-            Layout.rightMargin: 24
+            Layout.leftMargin: Theme.sp6
+            Layout.rightMargin: Theme.sp6
             placeholderText: "Category (optional)"
+            font.family: Theme.sansStack[0]
+            font.pixelSize: Theme.textBody
+            Material.accent: Theme.accent
+            color: Theme.fg
             Keys.onReturnPressed: dialog._commit()
             Keys.onEnterPressed: dialog._commit()
         }
 
-        Item { Layout.preferredHeight: 4 }
+        Item { Layout.preferredHeight: Theme.sp1 }
     }
 
     footer: Item {
-        implicitHeight: 60
+        implicitHeight: 64
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 16
-            spacing: 8
+            anchors.leftMargin: Theme.sp4
+            anchors.rightMargin: Theme.sp4
+            spacing: Theme.sp2
 
             Button {
                 text: "Delete"
                 visible: dialog.editingId > 0
                 flat: true
-                Material.foreground: "#f38ba8"
+                Material.foreground: Theme.error
                 onClicked: {
                     dialog.removed(dialog.editingId);
                     dialog.close();
@@ -149,12 +162,15 @@ Dialog {
             Button {
                 text: "Cancel"
                 flat: true
+                Material.foreground: Theme.fgMuted
                 onClicked: dialog.close()
             }
             Button {
                 id: saveBtn
                 text: "Save"
                 highlighted: true
+                Material.accent: Theme.accent
+                Material.foreground: Theme.onAccent
                 enabled: titleField.text.trim() !== "" && startField.dateValid && endField.dateValid
                 onClicked: dialog._commit()
             }
