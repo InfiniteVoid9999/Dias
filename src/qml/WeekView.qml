@@ -638,6 +638,37 @@ Item {
                 }
             }
 
+            // empty-state hint: shown only if there are literally no events
+            // anywhere in the visible week and no tasks. Doesn't compete with
+            // any content — just appears when the canvas is blank.
+            Column {
+                anchors.centerIn: parent
+                visible: EventModel.rowCount() === 0 && TaskModel.rowCount() === 0
+                spacing: Theme.sp3
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "auto_awesome"
+                    font.family: Theme.iconFont
+                    font.pixelSize: 36
+                    color: Theme.fgSubtle
+                }
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "your calendar is empty"
+                    color: Theme.fgMuted
+                    font.family: Theme.sansStack[0]
+                    font.pixelSize: Theme.textBody
+                    font.weight: Theme.weightMedium
+                }
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "press  N  for quick add  ·  ?  for shortcuts  ·  Ctrl+K  for command palette"
+                    color: Theme.fgSubtle
+                    font.family: Theme.monoStack[0]
+                    font.pixelSize: Theme.textCaption
+                }
+            }
+
             // now-line
             Item {
                 id: nowMarker
