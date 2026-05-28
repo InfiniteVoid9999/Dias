@@ -5,7 +5,10 @@
 
 #include <QAbstractListModel>
 #include <QDateTime>
+#include <QHash>
 #include <QVector>
+
+QT_FORWARD_DECLARE_CLASS(QTimer)
 
 namespace dias {
 
@@ -19,6 +22,8 @@ public:
         DueRole,
         HasDueRole,
         DoneRole,
+        SourceRole,
+        AgentRecentRole,
     };
 
     explicit TaskListModel(TaskRepository* repo, QObject* parent = nullptr);
@@ -33,9 +38,18 @@ public:
     Q_INVOKABLE void removeTask(int id);
     Q_INVOKABLE void setDone(int id, bool done);
 
+    Q_INVOKABLE void startPolling(int intervalMs);
+    Q_INVOKABLE void stopPolling();
+
+signals:
+    void agentEditDetected();
+
 private:
     TaskRepository* m_repo;
     QVector<Task> m_tasks;
+    qint64 m_lastReloadSec = 0;
+    QHash<int, qint64> m_recentAgentIds;
+    QTimer* m_pollTimer = nullptr;
 };
 
 } // namespace dias

@@ -1,9 +1,12 @@
 #include "TaskListModel.h"
 
+#include <QTimer>
+
 namespace dias {
 
 TaskListModel::TaskListModel(TaskRepository* repo, QObject* parent)
     : QAbstractListModel(parent), m_repo(repo) {
+    m_lastReloadSec = QDateTime::currentSecsSinceEpoch();
     reload();
 }
 
@@ -16,29 +19,49 @@ QVariant TaskListModel::data(const QModelIndex& index, int role) const {
     if (!index.isValid() || index.row() >= m_tasks.size()) return {};
     const Task& t = m_tasks[index.row()];
     switch (role) {
-        case IdRole:     return t.id;
-        case TextRole:   return t.text;
-        case DueRole:    return t.due;
-        case HasDueRole: return t.due.isValid();
-        case DoneRole:   return t.done;
+        case IdRole:          return t.id;
+        case TextRole:        return t.text;
+        case DueRole:         return t.due;
+        case HasDueRole:      return t.due.isValid();
+        case DoneRole:        return t.done;
+        case SourceRole:      return t.source;
+        case AgentRecentRole: return m_recentAgentIds.contains(t.id);
     }
     return {};
 }
 
 QHash<int, QByteArray> TaskListModel::roleNames() const {
     return {
-        {IdRole,     "id"},
-        {TextRole,   "text"},
-        {DueRole,    "due"},
-        {HasDueRole, "hasDue"},
-        {DoneRole,   "done"},
+        {IdRole,          "id"},
+        {TextRole,        "text"},
+        {DueRole,         "due"},
+        {HasDueRole,      "hasDue"},
+        {DoneRole,        "done"},
+        {SourceRole,      "source"},
+        {AgentRecentRole, "agentRecent"},
     };
 }
 
 void TaskListModel::reload() {
+    QVector<Task> fresh = m_repo->all();
+
+    QHash<int, qint64> newRecent;
+    bool sawAgentEdit = false;
+    for (const Task& t : fresh) {
+        const bool agentTouched = t.source == "agent" || t.lastEditedBy == "agent";
+        if (agentTouched && t.updatedAt > m_lastReloadSec) {
+            newRecent.insert(t.id, t.updatedAt);
+            sawAgentEdit = true;
+        }
+    }
+
     beginResetModel();
-    m_tasks = m_repo->all();
+    m_tasks = std::move(fresh);
+    m_recentAgentIds = std::move(newRecent);
     endResetModel();
+
+    m_lastReloadSec = QDateTime::currentSecsSinceEpoch();
+    if (sawAgentEdit) emit agentEditDetected();
 }
 
 void TaskListModel::createTask(const QString& text, const QDateTime& due) {
@@ -49,7 +72,6 @@ void TaskListModel::createTask(const QString& text, const QDateTime& due) {
 }
 
 void TaskListModel::updateTask(int id, const QString& text, const QDateTime& due) {
-    // Preserve done state — pulled from current in-memory snapshot.
     Task t;
     t.id = id;
     t.text = text;
@@ -66,6 +88,18 @@ void TaskListModel::removeTask(int id) {
 
 void TaskListModel::setDone(int id, bool done) {
     if (m_repo->setDone(id, done)) reload();
+}
+
+void TaskListModel::startPolling(int intervalMs) {
+    if (!m_pollTimer) {
+        m_pollTimer = new QTimer(this);
+        connect(m_pollTimer, &QTimer::timeout, this, &TaskListModel::reload);
+    }
+    m_pollTimer->start(intervalMs);
+}
+
+void TaskListModel::stopPolling() {
+    if (m_pollTimer) m_pollTimer->stop();
 }
 
 } // namespace dias

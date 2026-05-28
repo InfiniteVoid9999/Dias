@@ -42,10 +42,12 @@ QJsonObject eventJson(const Event& e) {
 
 QJsonObject taskJson(const Task& t) {
     QJsonObject o;
-    o["id"]   = t.id;
-    o["text"] = t.text;
-    o["due"]  = isoLocal(t.due);
-    o["done"] = t.done;
+    o["id"]             = t.id;
+    o["text"]           = t.text;
+    o["due"]            = isoLocal(t.due);
+    o["done"]           = t.done;
+    o["source"]         = t.source;
+    o["last_edited_by"] = t.lastEditedBy;
     return o;
 }
 
@@ -399,6 +401,8 @@ QJsonObject McpServer::toolCreateTask(const QJsonObject& args) {
     t.text = args.value("text").toString();
     const QString due = args.value("due_iso").toString();
     if (!due.isEmpty()) t.due = parseIso(due);
+    t.source       = "agent";
+    t.lastEditedBy = "agent";
 
     QJsonObject result;
     QJsonArray content;
@@ -449,6 +453,7 @@ QJsonObject McpServer::toolUpdateTask(const QJsonObject& args) {
         const QString s = args.value("due_iso").toString();
         current.due = s.isEmpty() ? QDateTime() : parseIso(s);
     }
+    current.lastEditedBy = "agent";
     if (!m_tasks->update(current)) {
         result["isError"] = true;
         content.append(textContent("DB update failed"));

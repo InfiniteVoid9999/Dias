@@ -89,7 +89,7 @@ QVector<Event> EventRepository::inRange(const QDateTime& from, const QDateTime& 
     QSqlQuery q(m_db);
     q.prepare(R"(
         SELECT id, title, start_ts, end_ts, all_day, category, source,
-               created_by, last_edited_by, rrule
+               created_by, last_edited_by, rrule, updated_at
         FROM events
         WHERE start_ts < :to AND end_ts > :from
         ORDER BY start_ts
@@ -114,6 +114,7 @@ QVector<Event> EventRepository::inRange(const QDateTime& from, const QDateTime& 
         e.createdBy    = q.value(7).toString();
         e.lastEditedBy = q.value(8).toString();
         e.rrule        = q.value(9).toString();
+        e.updatedAt    = q.value(10).toLongLong();
         out.push_back(std::move(e));
     }
     return out;

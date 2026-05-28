@@ -58,8 +58,10 @@ int main(int argc, char* argv[]) {
     dias::EventListModel eventModel(&eventRepo);
     eventModel.setViewDays(7);
     eventModel.setViewStart(mondayOfWeek(QDateTime::currentDateTime()));
+    eventModel.startPolling(2000);  // pick up external writes (MCP, sync) ~live
 
     dias::TaskListModel taskModel(&taskRepo);
+    taskModel.startPolling(2000);
 
     dias::ExportService exporter(&eventRepo, &taskRepo);
 

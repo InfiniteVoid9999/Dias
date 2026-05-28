@@ -5,7 +5,10 @@
 
 #include <QAbstractListModel>
 #include <QDateTime>
+#include <QHash>
 #include <QVector>
+
+QT_FORWARD_DECLARE_CLASS(QTimer)
 
 namespace dias {
 
@@ -23,6 +26,8 @@ public:
         AllDayRole,
         CategoryRole,
         SourceRole,
+        AgentRecentRole,
+        LastEditedByRole,
     };
 
     explicit EventListModel(EventRepository* repo, QObject* parent = nullptr);
@@ -43,9 +48,15 @@ public:
                                  const QDateTime& end, const QString& category);
     Q_INVOKABLE void removeEvent(int id);
 
+    // Polling: refresh from DB every interval; emits agentEditDetected when
+    // an external writer (MCP, sync) has touched rows since the last reload.
+    Q_INVOKABLE void startPolling(int intervalMs);
+    Q_INVOKABLE void stopPolling();
+
 signals:
     void viewStartChanged();
     void viewDaysChanged();
+    void agentEditDetected();
 
 private:
     void reload();
@@ -54,6 +65,9 @@ private:
     QDateTime m_viewStart;
     int m_viewDays = 7;
     QVector<Event> m_events;
+    qint64 m_lastReloadSec = 0;
+    QHash<int, qint64> m_recentAgentIds;  // id -> updated_at
+    QTimer* m_pollTimer = nullptr;
 };
 
 } // namespace dias

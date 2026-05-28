@@ -10,7 +10,7 @@ namespace dias {
 
 namespace {
 
-constexpr int kCurrentSchemaVersion = 1;
+constexpr int kCurrentSchemaVersion = 2;
 
 const char* kSchemaV1 = R"sql(
 CREATE TABLE events (
@@ -51,6 +51,13 @@ CREATE TABLE sync_sources (
     last_pulled_ts  INTEGER,
     UNIQUE(source_type, origin_id)
 );
+)sql";
+
+const char* kSchemaV2 = R"sql(
+ALTER TABLE tasks ADD COLUMN source         TEXT NOT NULL DEFAULT 'local';
+ALTER TABLE tasks ADD COLUMN last_edited_by TEXT NOT NULL DEFAULT 'local';
+ALTER TABLE tasks ADD COLUMN priority       INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tasks ADD COLUMN status         TEXT NOT NULL DEFAULT 'open';
 )sql";
 
 } // namespace
@@ -111,18 +118,24 @@ void Database::migrate() {
     if (from >= kCurrentSchemaVersion) return;
 
     m_db.transaction();
-    if (from < 1) {
+    auto runScript = [&](const char* sql, int version) -> bool {
         QSqlQuery q(m_db);
-        for (const QString& stmt : QString::fromUtf8(kSchemaV1).split(';', Qt::SkipEmptyParts)) {
+        for (const QString& stmt : QString::fromUtf8(sql).split(';', Qt::SkipEmptyParts)) {
             const QString trimmed = stmt.trimmed();
             if (trimmed.isEmpty()) continue;
             if (!q.exec(trimmed)) {
-                qCritical() << "Migration v1 failed:" << q.lastError().text() << "stmt:" << trimmed;
+                qCritical() << "Migration v" << version << " failed:" << q.lastError().text()
+                            << "stmt:" << trimmed;
                 m_db.rollback();
-                return;
+                return false;
             }
         }
-    }
+        return true;
+    };
+
+    if (from < 1) { if (!runScript(kSchemaV1, 1)) return; }
+    if (from < 2) { if (!runScript(kSchemaV2, 2)) return; }
+
     setUserVersion(kCurrentSchemaVersion);
     m_db.commit();
     qInfo() << "Database at schema v" << kCurrentSchemaVersion;

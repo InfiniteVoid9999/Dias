@@ -207,6 +207,7 @@ Item {
                     required property var end
                     required property string category
                     required property string source
+                    required property bool agentRecent
 
                     readonly property real startHours: start.getHours() + start.getMinutes() / 60
                     readonly property real rawDurHours: Math.max(0.25, (end - start) / 3600000)
@@ -233,6 +234,27 @@ Item {
                         color: Qt.darker(block.baseColor, 1.5)
                         radius: 1.5
                     }
+
+                    // agent-edit pulse ring (PRD §7 visible-spine)
+                    Rectangle {
+                        id: pulseRing
+                        anchors.fill: parent
+                        anchors.margins: -3
+                        radius: parent.radius + 3
+                        color: "transparent"
+                        border.color: Theme.accent
+                        border.width: 2
+                        opacity: 0
+                        z: 2
+
+                        SequentialAnimation {
+                            id: pulseAnim
+                            NumberAnimation { target: pulseRing; property: "opacity"; from: 0; to: 1; duration: 220; easing.type: Easing.OutCubic }
+                            NumberAnimation { target: pulseRing; property: "opacity"; from: 1; to: 0; duration: 1600; easing.type: Easing.InOutQuad }
+                        }
+                    }
+                    onAgentRecentChanged: if (agentRecent) pulseAnim.restart()
+                    Component.onCompleted: if (agentRecent) pulseAnim.restart()
 
                     Column {
                         anchors.fill: parent
@@ -281,6 +303,7 @@ Item {
                     required property var due
                     required property bool hasDue
                     required property bool done
+                    required property bool agentRecent
 
                     readonly property int col: hasDue ? root._dayIndex(due) : -1
                     readonly property real startHours: hasDue ? (due.getHours() + due.getMinutes() / 60) : 0
@@ -332,6 +355,29 @@ Item {
                             cursorShape: Qt.PointingHandCursor
                             onClicked: root.editTask(pill.id, pill.text, pill.due, pill.hasDue)
                         }
+
+                        // agent-edit pulse
+                        Rectangle {
+                            id: taskPulseRing
+                            anchors.fill: parent
+                            anchors.margins: -3
+                            radius: parent.radius + 3
+                            color: "transparent"
+                            border.color: Theme.accent
+                            border.width: 2
+                            opacity: 0
+                            z: 2
+                            SequentialAnimation {
+                                id: taskPulseAnim
+                                NumberAnimation { target: taskPulseRing; property: "opacity"; from: 0; to: 1; duration: 220 }
+                                NumberAnimation { target: taskPulseRing; property: "opacity"; from: 1; to: 0; duration: 1600 }
+                            }
+                        }
+                        Connections {
+                            target: pill
+                            function onAgentRecentChanged() { if (pill.agentRecent) taskPulseAnim.restart(); }
+                        }
+                        Component.onCompleted: if (pill.agentRecent) taskPulseAnim.restart()
                     }
                 }
             }

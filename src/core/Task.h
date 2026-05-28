@@ -10,6 +10,9 @@ struct Task {
     QString text;
     QDateTime due;   // invalid -> no due time
     bool done = false;
+    QString source = "local";
+    QString lastEditedBy = "local";
+    qint64 updatedAt = 0;
 };
 
 } // namespace dias

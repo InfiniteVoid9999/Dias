@@ -16,6 +16,7 @@ struct Event {
     QString createdBy = "local";
     QString lastEditedBy = "local";
     QString rrule;
+    qint64 updatedAt = 0;  // unix seconds, populated on read
 };
 
 } // namespace dias
