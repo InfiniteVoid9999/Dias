@@ -30,6 +30,9 @@ QVariant EventListModel::data(const QModelIndex& index, int role) const {
         case LastEditedByRole: return e.lastEditedBy;
         case AgentRecentRole:  return m_recentAgentIds.contains(e.id);
         case RruleRole:        return e.rrule;
+        case NotesRole:        return e.notes;
+        case LocationRole:     return e.location;
+        case ReminderRole:     return e.reminderMinutes;
     }
     return {};
 }
@@ -46,6 +49,9 @@ QHash<int, QByteArray> EventListModel::roleNames() const {
         {LastEditedByRole, "lastEditedBy"},
         {AgentRecentRole,  "agentRecent"},
         {RruleRole,        "rrule"},
+        {NotesRole,        "notes"},
+        {LocationRole,     "location"},
+        {ReminderRole,     "reminderMinutes"},
     };
 }
 
@@ -92,31 +98,89 @@ void EventListModel::reload() {
 
 void EventListModel::createEvent(const QString& title, const QDateTime& start,
                                  const QDateTime& end, const QString& category,
-                                 const QString& rrule) {
+                                 const QString& rrule, bool allDay,
+                                 const QString& notes, const QString& location,
+                                 int reminderMinutes) {
     Event e;
-    e.title    = title;
-    e.start    = start;
-    e.end      = end;
-    e.category = category;
-    e.rrule    = rrule;
+    e.title           = title;
+    e.start           = start;
+    e.end             = end;
+    e.category        = category;
+    e.rrule           = rrule;
+    e.allDay          = allDay;
+    e.notes           = notes;
+    e.location        = location;
+    e.reminderMinutes = reminderMinutes;
     if (m_repo->insert(e) > 0) reload();
 }
 
 void EventListModel::updateEvent(int id, const QString& title, const QDateTime& start,
                                  const QDateTime& end, const QString& category,
-                                 const QString& rrule) {
+                                 const QString& rrule, bool allDay,
+                                 const QString& notes, const QString& location,
+                                 int reminderMinutes) {
     Event e;
-    e.id       = id;
-    e.title    = title;
-    e.start    = start;
-    e.end      = end;
-    e.category = category;
-    e.rrule    = rrule;
+    e.id              = id;
+    e.title           = title;
+    e.start           = start;
+    e.end             = end;
+    e.category        = category;
+    e.rrule           = rrule;
+    e.allDay          = allDay;
+    e.notes           = notes;
+    e.location        = location;
+    e.reminderMinutes = reminderMinutes;
     if (m_repo->update(e)) reload();
+}
+
+void EventListModel::moveEvent(int id, const QDateTime& newStart) {
+    for (const Event& cur : m_events) {
+        if (cur.id == id) {
+            Event next = cur;
+            const qint64 dur = cur.start.secsTo(cur.end);
+            next.start = newStart;
+            next.end   = newStart.addSecs(dur);
+            if (m_repo->update(next)) reload();
+            return;
+        }
+    }
+}
+
+void EventListModel::resizeEvent(int id, const QDateTime& newEnd) {
+    for (const Event& cur : m_events) {
+        if (cur.id == id) {
+            Event next = cur;
+            if (newEnd > cur.start) {
+                next.end = newEnd;
+                if (m_repo->update(next)) reload();
+            }
+            return;
+        }
+    }
 }
 
 void EventListModel::removeEvent(int id) {
     if (m_repo->remove(id)) reload();
+}
+
+QVariantList EventListModel::search(const QString& q) {
+    QVariantList out;
+    for (const Event& e : m_repo->search(q, 25)) {
+        QVariantMap m;
+        m["id"]              = e.id;
+        m["title"]           = e.title;
+        m["start"]           = e.start;
+        m["end"]             = e.end;
+        m["category"]        = e.category;
+        m["source"]          = e.source;
+        m["rrule"]           = e.rrule;
+        m["allDay"]          = e.allDay;
+        m["notes"]           = e.notes;
+        m["location"]        = e.location;
+        m["reminderMinutes"] = e.reminderMinutes;
+        out.append(m);
+    }
+    return out;
 }
 
 void EventListModel::startPolling(int intervalMs) {

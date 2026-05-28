@@ -3,6 +3,7 @@
 #include "core/ExportService.h"
 #include "core/GCalSync.h"
 #include "core/ObsidianIngest.h"
+#include "core/ReminderService.h"
 #include "core/TaskRepository.h"
 #include "ui/EventListModel.h"
 #include "ui/TaskListModel.h"
@@ -68,6 +69,8 @@ int main(int argc, char* argv[]) {
     dias::ExportService exporter(&eventRepo, &taskRepo);
     dias::ObsidianIngest obsidian(&eventRepo, &taskRepo, db.handle());
     dias::GCalSync gcal(&eventRepo, db.handle());
+    dias::ReminderService reminders(&eventRepo);
+    reminders.start(30000);  // poll every 30s
 
     if (smoke) {
         std::fprintf(stderr, "[dias] smoke ok (%d events, %d tasks)\n",

@@ -24,6 +24,10 @@ public:
     // Display-only per PRD §4.3.
     QVector<Event> expandedInRange(const QDateTime& from, const QDateTime& to) const;
 
+    // Full-text style LIKE search over title/notes/location/category.
+    // Returns up to `limit` matches, most recently updated first.
+    QVector<Event> search(const QString& q, int limit = 25) const;
+
 private:
     QSqlDatabase m_db;
 };

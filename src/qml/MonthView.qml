@@ -23,7 +23,7 @@ Item {
     readonly property int monthIndex: monthAnchor.getMonth()
     readonly property int monthYear: monthAnchor.getFullYear()
 
-    signal editEvent(int id, string evTitle, date start, date end, string category, string rrule)
+    signal editEvent(var args)
     signal selectDay(date day)
 
     function next() {
@@ -193,6 +193,10 @@ Item {
                             required property string category
                             required property string source
                             required property string rrule
+                            required property bool allDay
+                            required property string notes
+                            required property string location
+                            required property int reminderMinutes
 
                             property bool sameDay: start.getFullYear() === cell.cellDay.getFullYear()
                                                 && start.getMonth()   === cell.cellDay.getMonth()
@@ -238,7 +242,14 @@ Item {
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: function(mouse) {
                                         mouse.accepted = true;
-                                        root.editEvent(chip.id, chip.title, chip.start, chip.end, chip.category, chip.rrule);
+                                        root.editEvent({
+                                            id: chip.id, title: chip.title,
+                                            start: chip.start, end: chip.end,
+                                            category: chip.category, source: chip.source,
+                                            rrule: chip.rrule, allDay: chip.allDay,
+                                            notes: chip.notes, location: chip.location,
+                                            reminderMinutes: chip.reminderMinutes
+                                        });
                                     }
                                 }
                             }

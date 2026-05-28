@@ -47,9 +47,16 @@ ApplicationWindow {
     Shortcut { sequences: ["W"];          enabled: !editDialog.visible && !taskDialog.visible; onActivated: setWeekView() }
     Shortcut { sequences: ["M"];          enabled: !editDialog.visible && !taskDialog.visible; onActivated: setMonthView() }
     Shortcut { sequences: ["Ctrl+E"];     enabled: !editDialog.visible && !taskDialog.visible; onActivated: doExport() }
+    Shortcut { sequences: ["Ctrl+F", "/"]; enabled: !editDialog.visible && !taskDialog.visible; onActivated: searchPopup.openSearch() }
 
     function currentView() {
         return viewLoader.item;
+    }
+    function jumpToDate(d) {
+        var anchor;
+        if (root.viewMode === "day")   { anchor = _localMidnight(d); EventModel.viewStart = anchor; }
+        else if (root.viewMode === "week") { anchor = _mondayOf(d);  EventModel.viewStart = anchor; }
+        else if (root.viewMode === "month") { anchor = _firstMondayOfMonthGrid(d); EventModel.viewStart = anchor; }
     }
 
     // -------- view helpers --------
@@ -145,14 +152,15 @@ ApplicationWindow {
             Layout.preferredHeight: 84
 
             Column {
+                id: headerDate
                 anchors.left: parent.left
                 anchors.leftMargin: Theme.sp6
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: Theme.sp1
 
                 Text {
+                    id: monthYearLabel
                     text: {
-                        // For month view, derive month from a date safely inside the grid.
                         if (root.viewMode === "month") {
                             var d = new Date(EventModel.viewStart);
                             d.setDate(d.getDate() + 14);
@@ -163,7 +171,14 @@ ApplicationWindow {
                     font.family: Theme.sansStack[0]
                     font.pixelSize: Theme.textDisplay
                     font.weight: Theme.weightBold
-                    color: Theme.fg
+                    color: pickerHover.hovered ? Theme.accent : Theme.fg
+                    Behavior on color { ColorAnimation { duration: 120 } }
+
+                    HoverHandler { id: pickerHover }
+                    TapHandler {
+                        onTapped: miniCalPopup.open()
+                        gesturePolicy: TapHandler.ReleaseWithinBounds
+                    }
                 }
                 Text {
                     text: {
@@ -283,6 +298,11 @@ ApplicationWindow {
                     onClicked: root.userTheme = (root.userTheme + 1) % 3
                 }
                 IconBtn {
+                    glyph: "search"
+                    ToolTip.text: "Search (Ctrl+F or /)"
+                    onClicked: searchPopup.openSearch()
+                }
+                IconBtn {
                     glyph: "hub"
                     ToolTip.text: "Sync from Obsidian vault"
                     onClicked: doObsidianSync()
@@ -329,10 +349,10 @@ ApplicationWindow {
                         s.setHours(hour, 0, 0, 0);
                         var e = new Date(s);
                         e.setHours(s.getHours() + 1);
-                        editDialog.openFor(0, "", s, e, "", "");
+                        editDialog.openFor({ id: 0, start: s, end: e });
                     }
-                    onEditEvent: function(id, evTitle, start, end, category, rrule) {
-                        editDialog.openFor(id, evTitle, start, end, category, rrule);
+                    onEditEvent: function(args) {
+                        editDialog.openFor(args);
                     }
                     onEditTask: function(id, taskText, due, hasDue, priority) {
                         taskDialog.openFor(id, taskText, due, hasDue, priority);
@@ -343,8 +363,8 @@ ApplicationWindow {
             Component {
                 id: monthComp
                 MonthView {
-                    onEditEvent: function(id, evTitle, start, end, category, rrule) {
-                        editDialog.openFor(id, evTitle, start, end, category, rrule);
+                    onEditEvent: function(args) {
+                        editDialog.openFor(args);
                     }
                     onSelectDay: function(day) {
                         EventModel.viewStart = day;
@@ -382,9 +402,9 @@ ApplicationWindow {
         id: editDialog
         anchors.centerIn: parent
 
-        onSaved: function(id, evTitle, start, end, category, rrule) {
-            if (id <= 0) EventModel.createEvent(evTitle, start, end, category, rrule);
-            else         EventModel.updateEvent(id, evTitle, start, end, category, rrule);
+        onSaved: function(id, evTitle, start, end, category, rrule, allDay, notes, loc, reminder) {
+            if (id <= 0) EventModel.createEvent(evTitle, start, end, category, rrule, allDay, notes, loc, reminder);
+            else         EventModel.updateEvent(id, evTitle, start, end, category, rrule, allDay, notes, loc, reminder);
         }
         onRemoved: function(id) { EventModel.removeEvent(id); }
     }
@@ -399,6 +419,292 @@ ApplicationWindow {
             else         TaskModel.updateTask(id, taskText, d, priority);
         }
         onRemoved: function(id) { TaskModel.removeTask(id); }
+    }
+
+    // -------- search popup --------
+    Popup {
+        id: searchPopup
+        modal: false
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        x: (root.width - width) / 2
+        y: 96
+        width: 540
+        padding: 0
+
+        property var results: []
+
+        function openSearch() {
+            searchField.text = "";
+            results = [];
+            open();
+            searchField.forceActiveFocus();
+        }
+
+        background: Rectangle {
+            color: Theme.surface
+            radius: Theme.radiusCard
+            border.color: Theme.border
+            border.width: 1
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 0
+
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.margins: Theme.sp3
+                spacing: Theme.sp2
+
+                Text {
+                    text: "search"
+                    font.family: Theme.iconFont
+                    font.pixelSize: 20
+                    color: Theme.fgMuted
+                }
+                TextField {
+                    id: searchField
+                    Layout.fillWidth: true
+                    placeholderText: "Search events…"
+                    font.family: Theme.sansStack[0]
+                    font.pixelSize: Theme.textInput
+                    Material.accent: Theme.accent
+                    color: Theme.fg
+                    background: null
+                    onTextChanged: searchPopup.results = EventModel.search(text)
+                    Keys.onEscapePressed: searchPopup.close()
+                    Keys.onReturnPressed: {
+                        if (searchPopup.results.length > 0) {
+                            var r = searchPopup.results[0];
+                            jumpToDate(r.start);
+                            editDialog.openFor(r);
+                            searchPopup.close();
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: Theme.divider
+            }
+
+            ListView {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(360, Math.max(40, searchPopup.results.length * 52))
+                model: searchPopup.results
+                clip: true
+                ScrollBar.vertical: ScrollBar {}
+
+                delegate: Item {
+                    required property var modelData
+                    required property int index
+                    width: ListView.view.width
+                    height: 52
+
+                    Rectangle {
+                        anchors.fill: parent
+                        color: rowHov.hovered ? Theme.hoverTint : "transparent"
+                        HoverHandler { id: rowHov }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                jumpToDate(modelData.start);
+                                editDialog.openFor(modelData);
+                                searchPopup.close();
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Theme.sp4
+                        anchors.rightMargin: Theme.sp4
+                        spacing: Theme.sp3
+
+                        Rectangle {
+                            Layout.preferredWidth: 4
+                            Layout.preferredHeight: 32
+                            radius: 2
+                            color: Theme.categoryColor(modelData.category || "", modelData.source || "local")
+                        }
+                        Column {
+                            Layout.fillWidth: true
+                            Text {
+                                text: modelData.title === "" ? "(untitled)" : modelData.title
+                                color: Theme.fg
+                                font.family: Theme.sansStack[0]
+                                font.pixelSize: Theme.textBody
+                                font.weight: Theme.weightMedium
+                                elide: Text.ElideRight
+                                width: parent.width
+                            }
+                            Text {
+                                text: Qt.formatDateTime(modelData.start, "ddd, d MMM yyyy · HH:mm")
+                                color: Theme.fgMuted
+                                font.family: Theme.sansStack[0]
+                                font.pixelSize: Theme.textCaption
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    anchors.centerIn: parent
+                    visible: parent.count === 0 && searchField.text !== ""
+                    text: "no matches"
+                    color: Theme.fgSubtle
+                    font.family: Theme.sansStack[0]
+                    font.pixelSize: Theme.textBody
+                }
+            }
+        }
+    }
+
+    // -------- mini-calendar picker (click month label) --------
+    Popup {
+        id: miniCalPopup
+        modal: false
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        x: 24
+        y: 88
+        width: 280
+        padding: Theme.sp3
+
+        property date pickerMonth: {
+            if (root.viewMode === "month") {
+                var d = new Date(EventModel.viewStart);
+                d.setDate(d.getDate() + 14);
+                return d;
+            }
+            return EventModel.viewStart;
+        }
+        function pickerNext()  { pickerMonth = (function(){ var d=new Date(pickerMonth); d.setMonth(d.getMonth()+1); return d; })() }
+        function pickerPrev()  { pickerMonth = (function(){ var d=new Date(pickerMonth); d.setMonth(d.getMonth()-1); return d; })() }
+        function firstCellDate() {
+            var first = new Date(pickerMonth.getFullYear(), pickerMonth.getMonth(), 1);
+            var dow = (first.getDay() + 6) % 7;
+            var monday = new Date(first);
+            monday.setDate(first.getDate() - dow);
+            return monday;
+        }
+
+        background: Rectangle {
+            color: Theme.surface
+            radius: Theme.radiusCard
+            border.color: Theme.border
+            border.width: 1
+        }
+
+        contentItem: ColumnLayout {
+            spacing: Theme.sp2
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.sp1
+
+                Text {
+                    Layout.fillWidth: true
+                    text: Qt.formatDate(miniCalPopup.pickerMonth, "MMMM yyyy")
+                    color: Theme.fg
+                    font.family: Theme.sansStack[0]
+                    font.pixelSize: Theme.textBody
+                    font.weight: Theme.weightBold
+                }
+                ToolButton {
+                    text: "chevron_left"
+                    font.family: Theme.iconFont
+                    font.pixelSize: 18
+                    Material.foreground: Theme.fgMuted
+                    onClicked: miniCalPopup.pickerPrev()
+                }
+                ToolButton {
+                    text: "chevron_right"
+                    font.family: Theme.iconFont
+                    font.pixelSize: 18
+                    Material.foreground: Theme.fgMuted
+                    onClicked: miniCalPopup.pickerNext()
+                }
+            }
+
+            // weekday header row
+            Row {
+                Layout.fillWidth: true
+                spacing: 0
+                Repeater {
+                    model: ["M","T","W","T","F","S","S"]
+                    Item {
+                        width: 280 / 7
+                        height: 18
+                        Text {
+                            anchors.centerIn: parent
+                            text: modelData
+                            color: Theme.fgSubtle
+                            font.family: Theme.sansStack[0]
+                            font.pixelSize: Theme.textCaption
+                            font.weight: Theme.weightMedium
+                        }
+                    }
+                }
+            }
+
+            // 6×7 day grid
+            Grid {
+                Layout.fillWidth: true
+                rows: 6
+                columns: 7
+                Repeater {
+                    model: 42
+                    Item {
+                        required property int index
+                        width: 280 / 7
+                        height: 32
+                        property date cellDay: {
+                            var d = miniCalPopup.firstCellDate();
+                            d.setDate(d.getDate() + index);
+                            return d;
+                        }
+                        property bool inMonth: cellDay.getMonth() === miniCalPopup.pickerMonth.getMonth()
+                        property bool isToday: {
+                            var t = new Date();
+                            return cellDay.getFullYear() === t.getFullYear()
+                                && cellDay.getMonth() === t.getMonth()
+                                && cellDay.getDate() === t.getDate();
+                        }
+
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 28; height: 28
+                            radius: Theme.radiusPill
+                            color: isToday ? Theme.accent
+                                  : cellHov.hovered ? Theme.hoverTint
+                                  : "transparent"
+                            HoverHandler { id: cellHov }
+                            Text {
+                                anchors.centerIn: parent
+                                text: cellDay.getDate()
+                                color: isToday ? Theme.onAccent
+                                      : inMonth ? Theme.fg
+                                      : Theme.fgSubtle
+                                font.family: Theme.sansStack[0]
+                                font.pixelSize: Theme.textCaption + 1
+                                font.weight: isToday ? Theme.weightBold : Theme.weightRegular
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    jumpToDate(cellDay);
+                                    miniCalPopup.close();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     Popup {

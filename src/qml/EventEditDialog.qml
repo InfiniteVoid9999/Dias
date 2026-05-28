@@ -7,23 +7,30 @@ import Dias
 Dialog {
     id: dialog
     modal: true
-    width: 480
+    width: 540
     padding: 0
     title: editingId > 0 ? "Edit event" : "New event"
 
     property int editingId: 0
-    property string evRrule: ""
-    signal saved(int id, string evTitle, date start, date end, string category, string rrule)
+    signal saved(int id, string evTitle, date start, date end, string category,
+                 string rrule, bool allDay, string notes, string location, int reminderMinutes)
     signal removed(int id)
 
-    function openFor(id, evTitle, start, end, category, rrule) {
-        editingId = id;
-        titleField.text = evTitle;
-        startField.text = Qt.formatDateTime(start, "yyyy-MM-dd HH:mm");
-        endField.text   = Qt.formatDateTime(end,   "yyyy-MM-dd HH:mm");
-        categoryField.text = category;
-        evRrule = rrule || "";
-        rruleEditor.rrule = evRrule;
+    function openFor(args) {
+        editingId = args.id || 0;
+        titleField.text = args.title || "";
+        startField.text = args.start ? Qt.formatDateTime(args.start, "yyyy-MM-dd HH:mm") : "";
+        endField.text   = args.end   ? Qt.formatDateTime(args.end,   "yyyy-MM-dd HH:mm") : "";
+        allDayField.text = args.start ? Qt.formatDate(args.start, "yyyy-MM-dd") : "";
+        categoryField.text = args.category || "";
+        notesField.text = args.notes || "";
+        locationField.text = args.location || "";
+        allDayToggle.checked = args.allDay || false;
+        rruleEditor.rrule = args.rrule || "";
+        // map reminder minutes back to combo index
+        var r = args.reminderMinutes || 0;
+        var idx = ({ 0:0, 5:1, 15:2, 30:3, 60:4, 1440:5 })[r];
+        reminderCombo.currentIndex = (idx === undefined) ? 0 : idx;
         open();
         Qt.callLater(function() {
             titleField.forceActiveFocus();
@@ -31,22 +38,41 @@ Dialog {
         });
     }
 
-    function _parse(s) {
+    function _parseDateTime(s) {
         var m = (s || "").match(/^\s*(\d{4})-(\d{1,2})-(\d{1,2})[\sT]+(\d{1,2}):(\d{1,2})\s*$/);
         if (!m) return null;
-        var y  = +m[1], mo = +m[2], d  = +m[3], h  = +m[4], mi = +m[5];
+        var y = +m[1], mo = +m[2], d = +m[3], h = +m[4], mi = +m[5];
         if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59) return null;
         var dt = new Date(y, mo - 1, d, h, mi, 0, 0);
         return isNaN(dt.getTime()) ? null : dt;
     }
+    function _parseDate(s) {
+        var m = (s || "").match(/^\s*(\d{4})-(\d{1,2})-(\d{1,2})\s*$/);
+        if (!m) return null;
+        var dt = new Date(+m[1], +m[2] - 1, +m[3]);
+        return isNaN(dt.getTime()) ? null : dt;
+    }
+
+    readonly property var _reminderValues: [0, 5, 15, 30, 60, 1440]
+    readonly property var _reminderLabels: ["None", "5 min before", "15 min before", "30 min before", "1 hour before", "1 day before"]
 
     function _commit() {
         if (!saveBtn.enabled) return;
-        var s = _parse(startField.text);
-        var e = _parse(endField.text);
-        if (e <= s) e = new Date(s.getTime() + 3600000);
+        var s, e;
+        if (allDayToggle.checked) {
+            var d = _parseDate(allDayField.text);
+            if (!d) return;
+            s = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
+            e = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 0);
+        } else {
+            s = _parseDateTime(startField.text);
+            e = _parseDateTime(endField.text);
+            if (e <= s) e = new Date(s.getTime() + 3600000);
+        }
         saved(editingId, titleField.text.trim(), s, e,
-              categoryField.text.trim(), rruleEditor.rrule);
+              categoryField.text.trim(), rruleEditor.rrule,
+              allDayToggle.checked, notesField.text.trim(),
+              locationField.text.trim(), _reminderValues[reminderCombo.currentIndex]);
         close();
     }
 
@@ -71,92 +97,226 @@ Dialog {
         }
     }
 
-    contentItem: ColumnLayout {
-        spacing: Theme.sp3
+    contentItem: ScrollView {
+        clip: true
+        contentWidth: availableWidth
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
-        TextField {
-            id: titleField
-            Layout.fillWidth: true
-            Layout.leftMargin: Theme.sp6
-            Layout.rightMargin: Theme.sp6
-            placeholderText: "Title"
-            font.family: Theme.sansStack[0]
-            font.pixelSize: Theme.textInput
-            Material.accent: Theme.accent
-            Material.foreground: Theme.fg
-            color: Theme.fg
-            Keys.onReturnPressed: dialog._commit()
-            Keys.onEnterPressed: dialog._commit()
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.leftMargin: Theme.sp6
-            Layout.rightMargin: Theme.sp6
-            spacing: Theme.sp2
+        ColumnLayout {
+            width: dialog.width
+            spacing: Theme.sp3
 
             TextField {
-                id: startField
+                id: titleField
                 Layout.fillWidth: true
-                placeholderText: "yyyy-MM-dd HH:mm"
+                Layout.leftMargin: Theme.sp6
+                Layout.rightMargin: Theme.sp6
+                placeholderText: "Title"
+                font.family: Theme.sansStack[0]
+                font.pixelSize: Theme.textInput
+                Material.accent: Theme.accent
+                color: Theme.fg
+                Keys.onReturnPressed: dialog._commit()
+                Keys.onEnterPressed: dialog._commit()
+            }
+
+            // all-day toggle row
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.leftMargin: Theme.sp6
+                Layout.rightMargin: Theme.sp6
+                spacing: Theme.sp2
+
+                Switch {
+                    id: allDayToggle
+                    Material.accent: Theme.accent
+                }
+                Text {
+                    text: "All day"
+                    color: Theme.fgMuted
+                    font.family: Theme.sansStack[0]
+                    font.pixelSize: Theme.textBody
+                }
+                Item { Layout.fillWidth: true }
+            }
+
+            // time fields when not all-day
+            RowLayout {
+                visible: !allDayToggle.checked
+                Layout.fillWidth: true
+                Layout.leftMargin: Theme.sp6
+                Layout.rightMargin: Theme.sp6
+                spacing: Theme.sp2
+
+                TextField {
+                    id: startField
+                    Layout.fillWidth: true
+                    placeholderText: "yyyy-MM-dd HH:mm"
+                    font.family: Theme.monoStack[0]
+                    font.pixelSize: Theme.textBody
+                    Material.accent: Theme.accent
+                    property bool dateValid: dialog._parseDateTime(text) !== null
+                    color: text === "" || dateValid ? Theme.fg : Theme.error
+                    Keys.onReturnPressed: dialog._commit()
+                    Keys.onEnterPressed: dialog._commit()
+                }
+                Text {
+                    text: "arrow_forward"
+                    font.family: Theme.iconFont
+                    font.pixelSize: 18
+                    color: Theme.fgSubtle
+                }
+                TextField {
+                    id: endField
+                    Layout.fillWidth: true
+                    placeholderText: "yyyy-MM-dd HH:mm"
+                    font.family: Theme.monoStack[0]
+                    font.pixelSize: Theme.textBody
+                    Material.accent: Theme.accent
+                    property bool dateValid: dialog._parseDateTime(text) !== null
+                    color: text === "" || dateValid ? Theme.fg : Theme.error
+                    Keys.onReturnPressed: dialog._commit()
+                    Keys.onEnterPressed: dialog._commit()
+                }
+            }
+
+            // single date field when all-day
+            TextField {
+                id: allDayField
+                visible: allDayToggle.checked
+                Layout.fillWidth: true
+                Layout.leftMargin: Theme.sp6
+                Layout.rightMargin: Theme.sp6
+                placeholderText: "yyyy-MM-dd"
                 font.family: Theme.monoStack[0]
                 font.pixelSize: Theme.textBody
                 Material.accent: Theme.accent
-                property bool dateValid: dialog._parse(text) !== null
+                property bool dateValid: dialog._parseDate(text) !== null
                 color: text === "" || dateValid ? Theme.fg : Theme.error
                 Keys.onReturnPressed: dialog._commit()
                 Keys.onEnterPressed: dialog._commit()
             }
-            Text {
-                text: "arrow_forward"
-                font.family: Theme.iconFont
-                font.pixelSize: 18
-                color: Theme.fgSubtle
-            }
-            TextField {
-                id: endField
+
+            // location with icon
+            RowLayout {
                 Layout.fillWidth: true
-                placeholderText: "yyyy-MM-dd HH:mm"
-                font.family: Theme.monoStack[0]
+                Layout.leftMargin: Theme.sp6
+                Layout.rightMargin: Theme.sp6
+                spacing: Theme.sp2
+
+                Text {
+                    text: "location_on"
+                    font.family: Theme.iconFont
+                    font.pixelSize: 18
+                    color: Theme.fgSubtle
+                }
+                TextField {
+                    id: locationField
+                    Layout.fillWidth: true
+                    placeholderText: "Location"
+                    font.family: Theme.sansStack[0]
+                    font.pixelSize: Theme.textBody
+                    Material.accent: Theme.accent
+                    color: Theme.fg
+                    Keys.onReturnPressed: dialog._commit()
+                    Keys.onEnterPressed: dialog._commit()
+                }
+            }
+
+            // category
+            TextField {
+                id: categoryField
+                Layout.fillWidth: true
+                Layout.leftMargin: Theme.sp6
+                Layout.rightMargin: Theme.sp6
+                placeholderText: "Category (optional)"
+                font.family: Theme.sansStack[0]
                 font.pixelSize: Theme.textBody
                 Material.accent: Theme.accent
-                property bool dateValid: dialog._parse(text) !== null
-                color: text === "" || dateValid ? Theme.fg : Theme.error
+                color: Theme.fg
                 Keys.onReturnPressed: dialog._commit()
                 Keys.onEnterPressed: dialog._commit()
             }
-        }
 
-        TextField {
-            id: categoryField
-            Layout.fillWidth: true
-            Layout.leftMargin: Theme.sp6
-            Layout.rightMargin: Theme.sp6
-            placeholderText: "Category (optional)"
-            font.family: Theme.sansStack[0]
-            font.pixelSize: Theme.textBody
-            Material.accent: Theme.accent
-            color: Theme.fg
-            Keys.onReturnPressed: dialog._commit()
-            Keys.onEnterPressed: dialog._commit()
-        }
+            // notes textarea
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.leftMargin: Theme.sp6
+                Layout.rightMargin: Theme.sp6
+                Layout.preferredHeight: 88
+                radius: 6
+                color: Theme.bg
+                border.color: notesArea.activeFocus ? Theme.accent : Theme.border
+                border.width: 1
 
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.leftMargin: Theme.sp6
-            Layout.rightMargin: Theme.sp6
-            Layout.preferredHeight: 1
-            color: Theme.divider
-        }
+                ScrollView {
+                    anchors.fill: parent
+                    anchors.margins: 6
+                    clip: true
+                    TextArea {
+                        id: notesArea
+                        wrapMode: TextArea.Wrap
+                        placeholderText: "Notes"
+                        font.family: Theme.sansStack[0]
+                        font.pixelSize: Theme.textBody
+                        color: Theme.fg
+                        background: null
+                        property alias text: notesArea.text
+                    }
+                }
+                // expose text uniformly
+                Item {
+                    id: notesField
+                    property string text: notesArea.text
+                    onTextChanged: notesArea.text = text
+                }
+            }
 
-        RecurrenceEditor {
-            id: rruleEditor
-            Layout.fillWidth: true
-            Layout.leftMargin: Theme.sp6
-            Layout.rightMargin: Theme.sp6
-        }
+            // reminder selector
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.leftMargin: Theme.sp6
+                Layout.rightMargin: Theme.sp6
+                spacing: Theme.sp2
 
-        Item { Layout.preferredHeight: Theme.sp1 }
+                Text {
+                    text: "notifications"
+                    font.family: Theme.iconFont
+                    font.pixelSize: 18
+                    color: Theme.fgSubtle
+                }
+                Text {
+                    text: "Reminder"
+                    color: Theme.fgMuted
+                    font.family: Theme.sansStack[0]
+                    font.pixelSize: Theme.textBody
+                    Layout.preferredWidth: 80
+                }
+                ComboBox {
+                    id: reminderCombo
+                    Layout.fillWidth: true
+                    model: dialog._reminderLabels
+                    Material.accent: Theme.accent
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.leftMargin: Theme.sp6
+                Layout.rightMargin: Theme.sp6
+                Layout.preferredHeight: 1
+                color: Theme.divider
+            }
+
+            RecurrenceEditor {
+                id: rruleEditor
+                Layout.fillWidth: true
+                Layout.leftMargin: Theme.sp6
+                Layout.rightMargin: Theme.sp6
+            }
+
+            Item { Layout.preferredHeight: Theme.sp2 }
+        }
     }
 
     footer: Item {
@@ -190,7 +350,10 @@ Dialog {
                 highlighted: true
                 Material.accent: Theme.accent
                 Material.foreground: Theme.onAccent
-                enabled: titleField.text.trim() !== "" && startField.dateValid && endField.dateValid
+                enabled: titleField.text.trim() !== ""
+                         && (allDayToggle.checked
+                             ? (allDayField.text !== "" && allDayField.dateValid)
+                             : (startField.dateValid && endField.dateValid))
                 onClicked: dialog._commit()
             }
         }

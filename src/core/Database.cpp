@@ -10,7 +10,7 @@ namespace dias {
 
 namespace {
 
-constexpr int kCurrentSchemaVersion = 2;
+constexpr int kCurrentSchemaVersion = 3;
 
 const char* kSchemaV1 = R"sql(
 CREATE TABLE events (
@@ -58,6 +58,12 @@ ALTER TABLE tasks ADD COLUMN source         TEXT NOT NULL DEFAULT 'local';
 ALTER TABLE tasks ADD COLUMN last_edited_by TEXT NOT NULL DEFAULT 'local';
 ALTER TABLE tasks ADD COLUMN priority       INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE tasks ADD COLUMN status         TEXT NOT NULL DEFAULT 'open';
+)sql";
+
+const char* kSchemaV3 = R"sql(
+ALTER TABLE events ADD COLUMN notes            TEXT NOT NULL DEFAULT '';
+ALTER TABLE events ADD COLUMN location         TEXT NOT NULL DEFAULT '';
+ALTER TABLE events ADD COLUMN reminder_minutes INTEGER NOT NULL DEFAULT 0;
 )sql";
 
 } // namespace
@@ -135,6 +141,7 @@ void Database::migrate() {
 
     if (from < 1) { if (!runScript(kSchemaV1, 1)) return; }
     if (from < 2) { if (!runScript(kSchemaV2, 2)) return; }
+    if (from < 3) { if (!runScript(kSchemaV3, 3)) return; }
 
     setUserVersion(kCurrentSchemaVersion);
     m_db.commit();

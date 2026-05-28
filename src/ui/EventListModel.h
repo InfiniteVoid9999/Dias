@@ -29,6 +29,9 @@ public:
         AgentRecentRole,
         LastEditedByRole,
         RruleRole,
+        NotesRole,
+        LocationRole,
+        ReminderRole,
     };
 
     explicit EventListModel(EventRepository* repo, QObject* parent = nullptr);
@@ -46,11 +49,25 @@ public:
     Q_INVOKABLE void reload();
     Q_INVOKABLE void createEvent(const QString& title, const QDateTime& start,
                                  const QDateTime& end, const QString& category,
-                                 const QString& rrule = {});
+                                 const QString& rrule = {},
+                                 bool allDay = false,
+                                 const QString& notes = {},
+                                 const QString& location = {},
+                                 int reminderMinutes = 0);
     Q_INVOKABLE void updateEvent(int id, const QString& title, const QDateTime& start,
                                  const QDateTime& end, const QString& category,
-                                 const QString& rrule = {});
+                                 const QString& rrule = {},
+                                 bool allDay = false,
+                                 const QString& notes = {},
+                                 const QString& location = {},
+                                 int reminderMinutes = 0);
+    // Lightweight drag/resize updates that don't require the full payload.
+    Q_INVOKABLE void moveEvent(int id, const QDateTime& newStart);
+    Q_INVOKABLE void resizeEvent(int id, const QDateTime& newEnd);
     Q_INVOKABLE void removeEvent(int id);
+
+    // Search returns up to 25 matches as JS-friendly QVariantMaps for popup display.
+    Q_INVOKABLE QVariantList search(const QString& q);
 
     // Polling: refresh from DB every interval; emits agentEditDetected when
     // an external writer (MCP, sync) has touched rows since the last reload.
