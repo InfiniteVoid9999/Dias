@@ -32,6 +32,8 @@ public:
         NotesRole,
         LocationRole,
         ReminderRole,
+        LaneRole,
+        LanesRole,
     };
 
     explicit EventListModel(EventRepository* repo, QObject* parent = nullptr);
@@ -96,6 +98,9 @@ private:
     QVector<Event> m_events;
     qint64 m_lastReloadSec = 0;
     QHash<int, qint64> m_recentAgentIds;  // id -> updated_at
+    QHash<int, int>    m_laneOf;          // id -> lane index (precomputed at reload)
+    QHash<int, int>    m_lanesOf;         // id -> total lanes in its cluster
+    QString            m_lastDataKey;     // diff key to skip no-op reloads
     QTimer* m_pollTimer = nullptr;
 };
 

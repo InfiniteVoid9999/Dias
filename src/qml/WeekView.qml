@@ -295,6 +295,8 @@ Item {
                     required property string notes
                     required property string location
                     required property int reminderMinutes
+                    required property int lane
+                    required property int lanes
 
                     visible: !allDay
                     anchors.fill: parent
@@ -339,10 +341,9 @@ Item {
                             required property int index
                             readonly property var seg: row.segments[index]
 
-                            // overlap-aware lane packing: query the model once per day-segment
-                            readonly property var laneInfo: EventModel.overlapLane(row.id)
-                            readonly property int laneIdx: laneInfo.lane || 0
-                            readonly property int laneCount: Math.max(1, laneInfo.lanes || 1)
+                            // overlap-aware lane packing: precomputed in the model
+                            readonly property int laneIdx: row.lane
+                            readonly property int laneCount: Math.max(1, row.lanes)
                             readonly property real slotW: (gridContent.laneWidth - Theme.sp2) / laneCount
 
                             // natural position from model
@@ -350,17 +351,30 @@ Item {
                             readonly property real naturalY: seg.startHours * root.hourHeight
                             readonly property real naturalH: Math.max(seg.durHours * root.hourHeight - 2, 24)
 
-                            x: dragArea.dragging ? dragArea.dragX : naturalX
-                            y: dragArea.dragging ? dragArea.dragY : naturalY
+                            x: dragArea.dragging ? (naturalX + dragArea.dragDx) : naturalX
+                            y: dragArea.dragging ? (naturalY + dragArea.dragDy) : naturalY
                             width: dragArea.dragging ? (gridContent.laneWidth - Theme.sp2) : slotW
                             height: resizeArea.resizing
-                                    ? Math.max(20, resizeArea.resizeH)
+                                    ? Math.max(20, naturalH + resizeArea.resizeDy)
                                     : naturalH
                             radius: Theme.radiusEvent
                             color: Qt.alpha(row.baseColor, hover.hovered ? 1.0 : 0.88)
                             Behavior on color { ColorAnimation { duration: 120 } }
-                            opacity: dragArea.dragging ? 0.85 : 1.0
+                            opacity: dragArea.dragging ? 0.95 : 1.0
                             z: dragArea.dragging ? 50 : 1
+
+                            // soft accent halo while dragging — gives the block a "lifted" feel
+                            Rectangle {
+                                visible: dragArea.dragging
+                                anchors.fill: parent
+                                anchors.margins: -4
+                                radius: parent.radius + 4
+                                color: "transparent"
+                                border.color: Theme.accent
+                                border.width: 2
+                                opacity: 0.55
+                                z: -1
+                            }
 
                             // leading accent
                             Rectangle {
@@ -372,9 +386,9 @@ Item {
                                 radius: 1.5
                             }
 
-                            // recurring badge
+                            // recurring badge — only when block is tall enough to host it
                             Rectangle {
-                                visible: row.isRecurringInstance
+                                visible: row.isRecurringInstance && block.height >= 40
                                 width: 14; height: 14; radius: 7
                                 anchors.right: parent.right
                                 anchors.top: parent.top
@@ -429,7 +443,8 @@ Item {
 
                             HoverHandler { id: hover }
 
-                            // drag-to-reschedule (disabled for RRULE instances to avoid surprise)
+                            // drag-to-reschedule using scene-space deltas (mouse.x in a
+                            // moving MouseArea would give stepped/wrong values).
                             MouseArea {
                                 id: dragArea
                                 anchors.fill: parent
@@ -438,27 +453,33 @@ Item {
                                 hoverEnabled: true
 
                                 property bool dragging: false
-                                property real dragX: 0
-                                property real dragY: 0
-                                property real pressX: 0
-                                property real pressY: 0
+                                property real pressSceneX: 0
+                                property real pressSceneY: 0
+                                property real dragDx: 0
+                                property real dragDy: 0
                                 property real moveThreshold: 4
 
                                 onPressed: function(mouse) {
-                                    pressX = mouse.x; pressY = mouse.y;
-                                    dragX = block.naturalX; dragY = block.naturalY;
+                                    var sp = block.mapToItem(gridContent, mouse.x, mouse.y);
+                                    pressSceneX = sp.x; pressSceneY = sp.y;
+                                    dragDx = 0; dragDy = 0;
+                                    dragging = false;
                                 }
                                 onPositionChanged: function(mouse) {
                                     if (row.isRecurringInstance) return;
                                     if (!pressed) return;
-                                    var dx = mouse.x - pressX;
-                                    var dy = mouse.y - pressY;
+                                    var sp = block.mapToItem(gridContent, mouse.x, mouse.y);
+                                    var dx = sp.x - pressSceneX;
+                                    var dy = sp.y - pressSceneY;
                                     if (!dragging && Math.abs(dx) + Math.abs(dy) > moveThreshold) {
                                         dragging = true;
                                     }
                                     if (dragging) {
-                                        dragX = block.naturalX + dx;
-                                        dragY = Math.max(0, Math.min(24 * root.hourHeight - 20, block.naturalY + dy));
+                                        dragDx = dx;
+                                        // Clamp Y so the block can't fly off the top/bottom of the grid.
+                                        var minDy = -block.naturalY;
+                                        var maxDy = 24 * root.hourHeight - block.naturalY - 20;
+                                        dragDy = Math.max(minDy, Math.min(maxDy, dy));
                                     }
                                 }
                                 onReleased: function(mouse) {
@@ -474,11 +495,13 @@ Item {
                                         });
                                         return;
                                     }
-                                    dragging = false;
-                                    // figure out target day + hour
+                                    var finalX = block.naturalX + dragDx;
+                                    var finalY = block.naturalY + dragDy;
+                                    dragging = false; dragDx = 0; dragDy = 0;
+
                                     var newCol = Math.max(0, Math.min(root.dayCount - 1,
-                                        Math.floor((dragX - root.axisWidth + gridContent.laneWidth / 2) / gridContent.laneWidth)));
-                                    var newHourF = root._snap15(dragY / root.hourHeight);
+                                        Math.floor((finalX - root.axisWidth + gridContent.laneWidth / 2) / gridContent.laneWidth)));
+                                    var newHourF = root._snap15(finalY / root.hourHeight);
                                     var newDate = new Date(root.viewStart);
                                     newDate.setDate(newDate.getDate() + newCol);
                                     newDate.setHours(Math.floor(newHourF), (newHourF % 1) * 60, 0, 0);
@@ -486,7 +509,7 @@ Item {
                                 }
                             }
 
-                            // drag-to-resize (bottom edge)
+                            // drag-to-resize (bottom edge) — same scene-space approach
                             MouseArea {
                                 id: resizeArea
                                 anchors.left: parent.left
@@ -498,23 +521,25 @@ Item {
                                 visible: !row.isRecurringInstance
 
                                 property bool resizing: false
-                                property real resizeH: 0
-                                property real pressY: 0
+                                property real pressSceneY: 0
+                                property real resizeDy: 0
 
                                 onPressed: function(mouse) {
-                                    pressY = mouse.y;
-                                    resizeH = block.naturalH;
+                                    var sp = block.mapToItem(gridContent, mouse.x, mouse.y);
+                                    pressSceneY = sp.y;
+                                    resizeDy = 0;
                                 }
                                 onPositionChanged: function(mouse) {
                                     if (!pressed) return;
                                     resizing = true;
-                                    var dy = mouse.y - pressY;
-                                    resizeH = Math.max(24, block.naturalH + dy);
+                                    var sp = block.mapToItem(gridContent, mouse.x, mouse.y);
+                                    resizeDy = sp.y - pressSceneY;
                                 }
                                 onReleased: function(mouse) {
-                                    if (!resizing) return;
-                                    resizing = false;
-                                    var endHoursF = root._snap15((block.naturalY + resizeH) / root.hourHeight);
+                                    if (!resizing) { resizeDy = 0; return; }
+                                    var finalH = Math.max(20, block.naturalH + resizeDy);
+                                    resizing = false; resizeDy = 0;
+                                    var endHoursF = root._snap15((block.naturalY + finalH) / root.hourHeight);
                                     var newEnd = new Date(row.start);
                                     newEnd.setHours(Math.floor(endHoursF), (endHoursF % 1) * 60, 0, 0);
                                     if (newEnd <= row.start) newEnd = new Date(row.start.getTime() + 15 * 60000);

@@ -38,13 +38,26 @@ ApplicationWindow {
     Component.onCompleted: {
         userTheme = Settings.get("ui/userTheme", 0);
         Theme.dark = _isDark;
+
         var savedMode = Settings.get("ui/viewMode", "week");
-        if (savedMode === "day")        setDayView();
-        else if (savedMode === "month") setMonthView();
-        else if (savedMode === "year")  setYearView();
-        // week is the default — already set in main.cpp
+        // Set viewMode + matching viewDays without using setXView (which would
+        // override the anchor with today). We restore the anchor below.
+        if (savedMode === "day")        { viewMode = "day";   EventModel.viewDays = 1; }
+        else if (savedMode === "month") { viewMode = "month"; EventModel.viewDays = 42; }
+        else if (savedMode === "year")  { viewMode = "year";  EventModel.viewDays = 366; }
+        else                            { viewMode = "week";  EventModel.viewDays = 7; }
+
+        var savedStart = Settings.get("ui/viewStart", null);
+        if (savedStart && savedStart instanceof Date && !isNaN(savedStart.getTime())) {
+            EventModel.viewStart = savedStart;
+        }
     }
     onViewModeChanged: Settings.set("ui/viewMode", viewMode)
+
+    Connections {
+        target: EventModel
+        function onViewStartChanged() { Settings.set("ui/viewStart", EventModel.viewStart); }
+    }
 
     Material.theme: _isDark ? Material.Dark : Material.Light
     Material.accent: Theme.accent
@@ -296,14 +309,20 @@ ApplicationWindow {
                                 required property var modelData
                                 width: parent.width / 4
                                 height: parent.height
+
+                                HoverHandler { id: segHov }
+                                property bool isActive: root.viewMode === modelData.mode
+
                                 Text {
                                     anchors.centerIn: parent
                                     text: modelData.label
                                     font.family: Theme.sansStack[0]
                                     font.pixelSize: Theme.textBody
                                     font.weight: Theme.weightMedium
-                                    color: root.viewMode === modelData.mode ? Theme.onAccent : Theme.fgMuted
-                                    Behavior on color { ColorAnimation { duration: 150 } }
+                                    color: parent.isActive ? Theme.onAccent
+                                          : segHov.hovered ? Theme.fg
+                                          : Theme.fgMuted
+                                    Behavior on color { ColorAnimation { duration: 120 } }
                                 }
                                 MouseArea {
                                     anchors.fill: parent
@@ -411,6 +430,18 @@ ApplicationWindow {
                 sourceComponent: root.viewMode === "month" ? monthComp
                               : root.viewMode === "year"  ? yearComp
                                                           : weekComp
+
+                // gentle crossfade on view swap
+                opacity: 1.0
+                onSourceComponentChanged: fadeIn.restart()
+                NumberAnimation on opacity {
+                    id: fadeIn
+                    from: 0.0
+                    to: 1.0
+                    duration: 180
+                    easing.type: Easing.OutCubic
+                    running: false
+                }
             }
 
             Component {
@@ -747,12 +778,21 @@ ApplicationWindow {
         padding: 0
 
         property var results: []
+        property int selected: 0
 
         function openSearch() {
             searchField.text = "";
             results = [];
+            selected = 0;
             open();
             searchField.forceActiveFocus();
+        }
+        function _runSelected() {
+            if (selected < 0 || selected >= results.length) return;
+            var r = results[selected];
+            jumpToDate(r.start);
+            editDialog.openFor(r);
+            close();
         }
 
         background: Rectangle {
@@ -785,16 +825,14 @@ ApplicationWindow {
                     Material.accent: Theme.accent
                     color: Theme.fg
                     background: null
-                    onTextChanged: searchPopup.results = EventModel.search(text)
-                    Keys.onEscapePressed: searchPopup.close()
-                    Keys.onReturnPressed: {
-                        if (searchPopup.results.length > 0) {
-                            var r = searchPopup.results[0];
-                            jumpToDate(r.start);
-                            editDialog.openFor(r);
-                            searchPopup.close();
-                        }
+                    onTextChanged: {
+                        searchPopup.results = EventModel.search(text);
+                        searchPopup.selected = 0;
                     }
+                    Keys.onEscapePressed: searchPopup.close()
+                    Keys.onReturnPressed: searchPopup._runSelected()
+                    Keys.onDownPressed: searchPopup.selected = Math.min(searchPopup.results.length - 1, searchPopup.selected + 1)
+                    Keys.onUpPressed:   searchPopup.selected = Math.max(0, searchPopup.selected - 1)
                 }
             }
 
@@ -819,15 +857,20 @@ ApplicationWindow {
 
                     Rectangle {
                         anchors.fill: parent
-                        color: rowHov.hovered ? Theme.hoverTint : "transparent"
-                        HoverHandler { id: rowHov }
+                        color: parent.index === searchPopup.selected ? Qt.alpha(Theme.accent, 0.18)
+                              : rowHov.hovered ? Theme.hoverTint
+                              : "transparent"
+                        Behavior on color { ColorAnimation { duration: 100 } }
+                        HoverHandler {
+                            id: rowHov
+                            onHoveredChanged: if (hovered) searchPopup.selected = parent.parent.index
+                        }
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                jumpToDate(modelData.start);
-                                editDialog.openFor(modelData);
-                                searchPopup.close();
+                                searchPopup.selected = parent.parent.index;
+                                searchPopup._runSelected();
                             }
                         }
                     }

@@ -35,6 +35,8 @@ QVariant EventListModel::data(const QModelIndex& index, int role) const {
         case NotesRole:        return e.notes;
         case LocationRole:     return e.location;
         case ReminderRole:     return e.reminderMinutes;
+        case LaneRole:         return m_laneOf.value(e.id, 0);
+        case LanesRole:        return m_lanesOf.value(e.id, 1);
     }
     return {};
 }
@@ -54,6 +56,8 @@ QHash<int, QByteArray> EventListModel::roleNames() const {
         {NotesRole,        "notes"},
         {LocationRole,     "location"},
         {ReminderRole,     "reminderMinutes"},
+        {LaneRole,         "lane"},
+        {LanesRole,        "lanes"},
     };
 }
 
@@ -89,9 +93,78 @@ void EventListModel::reload() {
         }
     }
 
+    // Skip work + view reset if nothing actually changed.
+    // Diff key: (id, start, end, updated_at) per event. Cheap to compute.
+    auto buildKey = [](const QVector<Event>& evs) {
+        QString k;
+        k.reserve(evs.size() * 24);
+        for (const Event& e : evs) {
+            k += QString::number(e.id) + ':'
+               + QString::number(e.start.toSecsSinceEpoch()) + ':'
+               + QString::number(e.end.toSecsSinceEpoch()) + ':'
+               + QString::number(e.updatedAt) + '|';
+        }
+        return k;
+    };
+    const QString freshKey = buildKey(fresh);
+    const bool dataChanged = (freshKey != m_lastDataKey);
+    const bool recentChanged = !newRecent.isEmpty() || !m_recentAgentIds.isEmpty();
+
+    if (!dataChanged && !recentChanged) {
+        // Nothing to do — preserves scroll position and avoids redraw.
+        m_lastReloadSec = QDateTime::currentSecsSinceEpoch();
+        return;
+    }
+
+    // ---- compute overlap lanes (greedy lane-pack, grouped by start day) ----
+    QHash<int, int> laneOf, lanesOf;
+    {
+        QHash<QDate, QVector<int>> byDay;
+        for (int i = 0; i < fresh.size(); ++i) {
+            if (fresh[i].allDay) continue;
+            byDay[fresh[i].start.date()].append(i);
+        }
+        for (auto it = byDay.begin(); it != byDay.end(); ++it) {
+            auto& idx = it.value();
+            std::sort(idx.begin(), idx.end(), [&](int a, int b) {
+                if (fresh[a].start != fresh[b].start) return fresh[a].start < fresh[b].start;
+                return fresh[a].id < fresh[b].id;
+            });
+            QVector<QDateTime> laneEnds;
+            for (int i : idx) {
+                const Event& e = fresh[i];
+                int chosen = -1;
+                for (int l = 0; l < laneEnds.size(); ++l) {
+                    if (laneEnds[l] <= e.start) { chosen = l; break; }
+                }
+                if (chosen < 0) {
+                    chosen = laneEnds.size();
+                    laneEnds.append(e.end);
+                } else {
+                    laneEnds[chosen] = e.end;
+                }
+                laneOf.insert(e.id, chosen);
+            }
+            for (int i : idx) {
+                const Event& e = fresh[i];
+                int maxLane = laneOf.value(e.id);
+                for (int j : idx) {
+                    if (j == i) continue;
+                    const Event& other = fresh[j];
+                    if (other.end <= e.start || other.start >= e.end) continue;
+                    maxLane = std::max(maxLane, laneOf.value(other.id));
+                }
+                lanesOf.insert(e.id, maxLane + 1);
+            }
+        }
+    }
+
     beginResetModel();
     m_events = std::move(fresh);
     m_recentAgentIds = std::move(newRecent);
+    m_laneOf  = std::move(laneOf);
+    m_lanesOf = std::move(lanesOf);
+    m_lastDataKey = freshKey;
     endResetModel();
 
     m_lastReloadSec = QDateTime::currentSecsSinceEpoch();
