@@ -26,13 +26,19 @@ public:
     Q_INVOKABLE void stop();
     Q_INVOKABLE bool dbusAvailable() const;
 
+private slots:
+    void onActionInvoked(quint32 notifId, const QString& actionKey);
+    void onNotificationClosed(quint32 notifId, quint32 reason);
+
 private:
     void tick();
-    void fire(const QString& title, const QString& body);
+    quint32 fire(int eventId, const QString& title, const QString& body);
 
     EventRepository* m_events;
     QTimer* m_timer = nullptr;
-    QHash<QString, bool> m_fired;  // key = id:startTs
+    QHash<QString, bool>      m_fired;        // key = id:startTs
+    QHash<QString, qint64>    m_snoozedUntil; // key = id:startTs -> unix seconds
+    QHash<quint32, QString>   m_notifKey;     // notification_id -> key
 };
 
 } // namespace dias

@@ -14,6 +14,7 @@ Item {
     readonly property real allDayRowH: 24
 
     signal createAt(date day, int hour)
+    signal createRange(date day, real startHourF, real endHourF)
     signal editEvent(var args)
     signal editTask(int id, string taskText, date due, bool hasDue, int priority)
 
@@ -269,12 +270,68 @@ Item {
                             color: Theme.gridLine
                         }
 
+                        // ghost preview rectangle while drawing
+                        Rectangle {
+                            id: drawGhost
+                            visible: createArea.drawing
+                            x: 2
+                            width: parent.width - 4
+                            y: Math.min(createArea.pressY, createArea.curY)
+                            height: Math.abs(createArea.curY - createArea.pressY)
+                            radius: Theme.radiusEvent
+                            color: Qt.alpha(Theme.accent, 0.30)
+                            border.color: Theme.accent
+                            border.width: 1
+                            Text {
+                                anchors.centerIn: parent
+                                visible: parent.height > 22
+                                text: {
+                                    var sh = root._snap15(Math.min(createArea.pressY, createArea.curY) / root.hourHeight);
+                                    var eh = root._snap15(Math.max(createArea.pressY, createArea.curY) / root.hourHeight);
+                                    function fmt(h) {
+                                        var hi = Math.floor(h);
+                                        var mi = Math.round((h - hi) * 60);
+                                        return (hi < 10 ? "0" : "") + hi + ":" + (mi < 10 ? "0" : "") + mi;
+                                    }
+                                    return fmt(sh) + " – " + fmt(eh);
+                                }
+                                color: Theme.onAccent
+                                font.family: Theme.monoStack[0]
+                                font.pixelSize: Theme.textCaption
+                                font.weight: Theme.weightMedium
+                            }
+                        }
+
                         MouseArea {
+                            id: createArea
                             anchors.fill: parent
                             hoverEnabled: true
-                            onClicked: function(mouse) {
-                                var hour = Math.max(0, Math.min(23, Math.floor(mouse.y / root.hourHeight)));
-                                root.createAt(dayCol.day, hour);
+                            property bool drawing: false
+                            property real pressY: 0
+                            property real curY: 0
+                            property real moveThreshold: 6
+
+                            onPressed: function(mouse) {
+                                pressY = mouse.y;
+                                curY = mouse.y;
+                                drawing = false;
+                            }
+                            onPositionChanged: function(mouse) {
+                                if (!pressed) return;
+                                curY = mouse.y;
+                                if (Math.abs(curY - pressY) > moveThreshold) drawing = true;
+                            }
+                            onReleased: function(mouse) {
+                                if (drawing) {
+                                    drawing = false;
+                                    var sh = root._snap15(Math.min(pressY, curY) / root.hourHeight);
+                                    var eh = root._snap15(Math.max(pressY, curY) / root.hourHeight);
+                                    if (eh - sh < 0.25) eh = sh + 0.25;  // minimum 15 min
+                                    root.createRange(dayCol.day, sh, eh);
+                                } else {
+                                    var hour = Math.max(0, Math.min(23, Math.floor(mouse.y / root.hourHeight)));
+                                    root.createAt(dayCol.day, hour);
+                                }
                             }
                         }
                     }

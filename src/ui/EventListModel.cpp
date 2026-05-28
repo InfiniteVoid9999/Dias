@@ -417,6 +417,27 @@ QVariantMap EventListModel::overlapLane(int eventId) const {
     return out;
 }
 
+QVariantMap EventListModel::nextUpcoming() const {
+    const QDateTime now = QDateTime::currentDateTime();
+    const QDateTime to  = now.addSecs(24 * 3600);
+    const auto evs = m_repo->expandedInRange(now, to);
+    for (const Event& e : evs) {
+        if (e.allDay) continue;
+        if (e.start <= now) continue;
+        if (m_visibilityFilterSet && !m_visibleCalendarIds.contains(e.calendarId)) continue;
+        QVariantMap m;
+        m["id"]       = e.id;
+        m["title"]    = e.title;
+        m["start"]    = e.start;
+        m["end"]      = e.end;
+        m["secondsUntil"] = static_cast<qint64>(now.secsTo(e.start));
+        m["color"]    = m_calendars ? m_calendars->colorOf(e.calendarId) : QString();
+        m["location"] = e.location;
+        return m;
+    }
+    return {};
+}
+
 QVariantList EventListModel::search(const QString& q) {
     QVariantList out;
     for (const Event& e : m_repo->search(q, 25)) {

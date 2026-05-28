@@ -84,6 +84,10 @@ public:
     // Search returns up to 25 matches as JS-friendly QVariantMaps for popup display.
     Q_INVOKABLE QVariantList search(const QString& q);
 
+    // Next non-all-day upcoming event within the next 24h. Returns empty map
+    // when there's nothing on deck.
+    Q_INVOKABLE QVariantMap nextUpcoming() const;
+
     // Position of an all-day event among visible all-day events (-1 if not).
     // Used by WeekView's all-day banner to stack rows tightly without gaps.
     Q_INVOKABLE int allDayPositionOf(int eventId) const;

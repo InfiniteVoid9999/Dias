@@ -11,7 +11,7 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug)
 endif()
 
-find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Sql DBus Network)
+find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Sql DBus Network Widgets)
 
 qt_standard_project_setup(REQUIRES 6.6)
 qt_policy(SET QTP0004 NEW)
@@ -62,6 +62,8 @@ qt_add_executable(dias
     src/ui/EventListModel.h
     src/ui/TaskListModel.cpp
     src/ui/TaskListModel.h
+    src/ui/TrayService.cpp
+    src/ui/TrayService.h
     src/ui/UndoService.cpp
     src/ui/UndoService.h
 )
@@ -93,6 +95,7 @@ target_link_libraries(dias PRIVATE
     Qt6::Qml
     Qt6::Quick
     Qt6::QuickControls2
+    Qt6::Widgets
 )
 
 # -----------------------------------------------------------------------------

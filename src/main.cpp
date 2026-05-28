@@ -11,10 +11,11 @@
 #include "ui/CalendarListModel.h"
 #include "ui/EventListModel.h"
 #include "ui/TaskListModel.h"
+#include "ui/TrayService.h"
 #include "ui/UndoService.h"
 
+#include <QApplication>
 #include <QDateTime>
-#include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlError>
@@ -51,9 +52,10 @@ int main(int argc, char* argv[]) {
     const bool smoke    = arg1 == "--smoke";
     const bool qmlcheck = arg1 == "--qmlcheck";
 
-    QGuiApplication app(argc, argv);
-    QGuiApplication::setApplicationName("Dias");
-    QGuiApplication::setOrganizationName("Dias");
+    QApplication app(argc, argv);  // QApplication required for QSystemTrayIcon (QtWidgets)
+    QCoreApplication::setApplicationName("Dias");
+    QCoreApplication::setOrganizationName("Dias");
+    QApplication::setQuitOnLastWindowClosed(false);  // tray keeps daemon running
 
     QQuickStyle::setStyle("Material");
 
@@ -98,6 +100,7 @@ int main(int argc, char* argv[]) {
     dias::ReminderService reminders(&eventRepo);
     reminders.start(30000);  // poll every 30s
     dias::SettingsService settings;
+    dias::TrayService tray;
 
     if (smoke) {
         std::fprintf(stderr, "[dias] smoke ok (%d events, %d tasks)\n",
@@ -127,6 +130,7 @@ int main(int argc, char* argv[]) {
     engine.rootContext()->setContextProperty("GCal",          &gcal);
     engine.rootContext()->setContextProperty("Ics",           &ics);
     engine.rootContext()->setContextProperty("Settings",      &settings);
+    engine.rootContext()->setContextProperty("Tray",          &tray);
     engine.loadFromModule("Dias", "Main");
     if (engine.rootObjects().isEmpty()) {
         std::fprintf(stderr, "[dias] root objects empty -- QML load failed\n");
@@ -137,7 +141,7 @@ int main(int argc, char* argv[]) {
     if (qmlcheck) {
         // Load QML, spin the loop for 1.5s to surface any deferred warnings,
         // then exit cleanly so ASAN/UBSAN flush properly.
-        QTimer::singleShot(1500, &app, &QGuiApplication::quit);
+        QTimer::singleShot(1500, &app, &QApplication::quit);
     }
 
     return app.exec();

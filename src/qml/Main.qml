@@ -70,6 +70,32 @@ ApplicationWindow {
 
     Overlay.modal: Rectangle { color: Theme.scrim }
 
+    // Close-to-tray (only if tray available; otherwise normal close behavior).
+    onClosing: function(close) {
+        if (Tray.available) {
+            close.accepted = false;
+            root.hide();
+        }
+    }
+
+    // Tray menu actions.
+    Connections {
+        target: Tray
+        function onShowRequested() {
+            root.show();
+            root.raise();
+            root.requestActivate();
+        }
+        function onHideRequested() { root.hide(); }
+        function onQuickAddRequested() {
+            root.show();
+            root.raise();
+            root.requestActivate();
+            quickAddPopup.openQuick();
+        }
+        function onQuitRequested() { Qt.quit(); }
+    }
+
     // -------- shortcuts (gated when modals open) --------
     Shortcut {
         sequences: ["Escape"]
@@ -88,6 +114,14 @@ ApplicationWindow {
     Shortcut { sequences: ["Y"];           enabled: !editDialog.visible && !taskDialog.visible; onActivated: setYearView() }
     Shortcut { sequences: ["?", "Shift+/"]; enabled: !editDialog.visible && !taskDialog.visible; onActivated: helpPopup.open() }
     Shortcut { sequences: ["Ctrl+K"];       enabled: !editDialog.visible && !taskDialog.visible; onActivated: cmdPalette.openPalette() }
+    Shortcut { sequences: ["Ctrl+Z"];       enabled: !editDialog.visible && !taskDialog.visible; onActivated: Undo.undo() }
+    Shortcut { sequences: ["Ctrl+Shift+Z", "Ctrl+Y"]; enabled: !editDialog.visible && !taskDialog.visible; onActivated: Undo.redo() }
+
+    Connections {
+        target: Undo
+        function onDidUndo(description) { statusPopup.show("Undid: " + description); }
+        function onDidRedo(description) { statusPopup.show("Redid: " + description); }
+    }
 
     function currentView() {
         return viewLoader.item;
@@ -216,6 +250,77 @@ ApplicationWindow {
             id: header
             Layout.fillWidth: true
             Layout.preferredHeight: 84
+
+            // next-event countdown chip — only visible when something's coming up
+            Item {
+                id: nextChip
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.verticalCenter: parent.verticalCenter
+                width: chipBg.implicitWidth
+                height: 32
+                property var info: ({})
+                property string text: ""
+                visible: text !== ""
+
+                Timer {
+                    interval: 30000
+                    repeat: true
+                    running: true
+                    triggeredOnStart: true
+                    onTriggered: nextChip._refresh()
+                }
+                Connections {
+                    target: EventModel
+                    function onAgentEditDetected() { nextChip._refresh(); }
+                }
+
+                function _refresh() {
+                    info = EventModel.nextUpcoming();
+                    if (!info || !info.start) { text = ""; return; }
+                    var s = info.secondsUntil;
+                    var label;
+                    if (s < 60) label = "now";
+                    else if (s < 3600) label = Math.round(s / 60) + "m";
+                    else {
+                        var h = Math.floor(s / 3600);
+                        var m = Math.round((s - h * 3600) / 60);
+                        label = m === 0 ? (h + "h") : (h + "h " + m + "m");
+                    }
+                    var title = info.title || "(untitled)";
+                    if (title.length > 28) title = title.substring(0, 26) + "…";
+                    text = title + "  ·  in " + label;
+                }
+
+                Rectangle {
+                    id: chipBg
+                    anchors.fill: parent
+                    radius: Theme.radiusPill
+                    color: Theme.surface
+                    border.color: Theme.border
+                    border.width: 1
+                    implicitWidth: rowChip.implicitWidth + 24
+                }
+                Row {
+                    id: rowChip
+                    anchors.left: parent.left
+                    anchors.leftMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 8
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 8; height: 8; radius: 4
+                        color: nextChip.info && nextChip.info.color ? nextChip.info.color : Theme.accent
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: nextChip.text
+                        color: Theme.fg
+                        font.family: Theme.sansStack[0]
+                        font.pixelSize: Theme.textCaption + 1
+                        font.weight: Theme.weightMedium
+                    }
+                }
+            }
 
             Column {
                 id: headerDate
@@ -452,6 +557,13 @@ ApplicationWindow {
                         s.setHours(hour, 0, 0, 0);
                         var e = new Date(s);
                         e.setHours(s.getHours() + 1);
+                        editDialog.openFor({ id: 0, start: s, end: e });
+                    }
+                    onCreateRange: function(day, startHourF, endHourF) {
+                        var s = new Date(day);
+                        s.setHours(Math.floor(startHourF), (startHourF % 1) * 60, 0, 0);
+                        var e = new Date(day);
+                        e.setHours(Math.floor(endHourF), (endHourF % 1) * 60, 0, 0);
                         editDialog.openFor({ id: 0, start: s, end: e });
                     }
                     onEditEvent: function(args) {
@@ -769,6 +881,8 @@ ApplicationWindow {
             { glyph: "event_available",  title: "Sync from Google Calendar",hint: "",        run: doGCalSync },
             { glyph: "file_download",    title: "Export to ~/Dias/export/", hint: "Ctrl+E",  run: doExport },
             { glyph: "calendar_today",   title: "Open mini-calendar picker",hint: "",        run: () => miniCalPopup.open() },
+            { glyph: "undo",             title: "Undo last action",          hint: "Ctrl+Z",  run: () => Undo.undo() },
+            { glyph: "redo",             title: "Redo",                      hint: "Ctrl+Shift+Z", run: () => Undo.redo() },
             { glyph: "keyboard",         title: "Keyboard shortcuts…",      hint: "?",       run: () => helpPopup.open() }
         ]
     }
