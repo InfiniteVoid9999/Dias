@@ -23,7 +23,7 @@ Dialog {
         endField.text   = args.end   ? Qt.formatDateTime(args.end,   "yyyy-MM-dd HH:mm") : "";
         allDayField.text = args.start ? Qt.formatDate(args.start, "yyyy-MM-dd") : "";
         categoryField.text = args.category || "";
-        notesField.text = args.notes || "";
+        notesArea.text = args.notes || "";
         locationField.text = args.location || "";
         allDayToggle.checked = args.allDay || false;
         rruleEditor.rrule = args.rrule || "";
@@ -71,7 +71,7 @@ Dialog {
         }
         saved(editingId, titleField.text.trim(), s, e,
               categoryField.text.trim(), rruleEditor.rrule,
-              allDayToggle.checked, notesField.text.trim(),
+              allDayToggle.checked, notesArea.text.trim(),
               locationField.text.trim(), _reminderValues[reminderCombo.currentIndex]);
         close();
     }
@@ -261,14 +261,7 @@ Dialog {
                         font.pixelSize: Theme.textBody
                         color: Theme.fg
                         background: null
-                        property alias text: notesArea.text
                     }
-                }
-                // expose text uniformly
-                Item {
-                    id: notesField
-                    property string text: notesArea.text
-                    onTextChanged: notesArea.text = text
                 }
             }
 

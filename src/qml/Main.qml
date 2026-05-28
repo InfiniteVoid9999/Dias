@@ -48,15 +48,18 @@ ApplicationWindow {
     Shortcut { sequences: ["M"];          enabled: !editDialog.visible && !taskDialog.visible; onActivated: setMonthView() }
     Shortcut { sequences: ["Ctrl+E"];     enabled: !editDialog.visible && !taskDialog.visible; onActivated: doExport() }
     Shortcut { sequences: ["Ctrl+F", "/"]; enabled: !editDialog.visible && !taskDialog.visible; onActivated: searchPopup.openSearch() }
+    Shortcut { sequences: ["N", "Ctrl+N"]; enabled: !editDialog.visible && !taskDialog.visible && !quickAddPopup.visible; onActivated: quickAddPopup.openQuick() }
+    Shortcut { sequences: ["Y"];           enabled: !editDialog.visible && !taskDialog.visible; onActivated: setYearView() }
 
     function currentView() {
         return viewLoader.item;
     }
     function jumpToDate(d) {
         var anchor;
-        if (root.viewMode === "day")   { anchor = _localMidnight(d); EventModel.viewStart = anchor; }
-        else if (root.viewMode === "week") { anchor = _mondayOf(d);  EventModel.viewStart = anchor; }
+        if (root.viewMode === "day")        { anchor = _localMidnight(d); EventModel.viewStart = anchor; }
+        else if (root.viewMode === "week")  { anchor = _mondayOf(d);      EventModel.viewStart = anchor; }
         else if (root.viewMode === "month") { anchor = _firstMondayOfMonthGrid(d); EventModel.viewStart = anchor; }
+        else if (root.viewMode === "year")  { EventModel.viewStart = new Date(d.getFullYear(), 0, 1); }
     }
 
     // -------- view helpers --------
@@ -100,6 +103,19 @@ ApplicationWindow {
         viewMode = "month";
         EventModel.viewStart = _firstMondayOfMonthGrid(seed);
         EventModel.viewDays = 42;
+    }
+    function setYearView() {
+        var seed;
+        if (viewMode === "month") {
+            seed = new Date(EventModel.viewStart);
+            seed.setDate(seed.getDate() + 14);
+        } else {
+            seed = (viewMode === "day" || viewMode === "week") ? EventModel.viewStart : new Date();
+        }
+        var jan1 = new Date(seed.getFullYear(), 0, 1);
+        viewMode = "year";
+        EventModel.viewStart = jan1;
+        EventModel.viewDays = 366;
     }
     function doExport() {
         var msg = Exporter.exportTo(Exporter.defaultDir());
@@ -161,6 +177,9 @@ ApplicationWindow {
                 Text {
                     id: monthYearLabel
                     text: {
+                        if (root.viewMode === "year") {
+                            return EventModel.viewStart.getFullYear();
+                        }
                         if (root.viewMode === "month") {
                             var d = new Date(EventModel.viewStart);
                             d.setDate(d.getDate() + 14);
@@ -201,15 +220,15 @@ ApplicationWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: Theme.sp1
 
-                // segmented view toggle (3-way: Day / Week / Month)
+                // segmented view toggle (4-way: Day / Week / Month / Year)
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     height: 36
-                    width: 180
+                    width: 240
                     radius: Theme.radiusPill
                     color: Theme.surface
 
-                    property real segWidth: (width - 6) / 3
+                    property real segWidth: (width - 6) / 4
 
                     Rectangle {
                         id: segHighlight
@@ -220,7 +239,8 @@ ApplicationWindow {
                         color: Theme.accent
                         x: root.viewMode === "day"   ? 3
                           : root.viewMode === "week" ? 3 + parent.segWidth
-                                                     : 3 + 2 * parent.segWidth
+                          : root.viewMode === "month"? 3 + 2 * parent.segWidth
+                                                     : 3 + 3 * parent.segWidth
                         Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
                     }
 
@@ -232,11 +252,12 @@ ApplicationWindow {
                             model: [
                                 { mode: "day",   label: "Day"   },
                                 { mode: "week",  label: "Week"  },
-                                { mode: "month", label: "Month" }
+                                { mode: "month", label: "Month" },
+                                { mode: "year",  label: "Year"  }
                             ]
                             delegate: Item {
                                 required property var modelData
-                                width: parent.width / 3
+                                width: parent.width / 4
                                 height: parent.height
                                 Text {
                                     anchors.centerIn: parent
@@ -251,9 +272,10 @@ ApplicationWindow {
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: {
-                                        if (modelData.mode === "day")   setDayView();
+                                        if (modelData.mode === "day")        setDayView();
                                         else if (modelData.mode === "week")  setWeekView();
                                         else if (modelData.mode === "month") setMonthView();
+                                        else if (modelData.mode === "year")  setYearView();
                                     }
                                 }
                             }
@@ -298,6 +320,12 @@ ApplicationWindow {
                     onClicked: root.userTheme = (root.userTheme + 1) % 3
                 }
                 IconBtn {
+                    glyph: "bolt"
+                    ToolTip.text: "Quick add (N) — natural language"
+                    emphasized: true
+                    onClicked: quickAddPopup.openQuick()
+                }
+                IconBtn {
                     glyph: "search"
                     ToolTip.text: "Search (Ctrl+F or /)"
                     onClicked: searchPopup.openSearch()
@@ -338,7 +366,9 @@ ApplicationWindow {
                 id: viewLoader
                 Layout.fillHeight: true
                 Layout.fillWidth: true
-                sourceComponent: root.viewMode === "month" ? monthComp : weekComp
+                sourceComponent: root.viewMode === "month" ? monthComp
+                              : root.viewMode === "year"  ? yearComp
+                                                          : weekComp
             }
 
             Component {
@@ -370,6 +400,17 @@ ApplicationWindow {
                         EventModel.viewStart = day;
                         EventModel.viewDays = 1;
                         root.viewMode = "day";
+                    }
+                }
+            }
+
+            Component {
+                id: yearComp
+                YearView {
+                    onSelectMonth: function(monthAnchor) {
+                        EventModel.viewStart = _firstMondayOfMonthGrid(monthAnchor);
+                        EventModel.viewDays = 42;
+                        root.viewMode = "month";
                     }
                 }
             }
@@ -419,6 +460,18 @@ ApplicationWindow {
             else         TaskModel.updateTask(id, taskText, d, priority);
         }
         onRemoved: function(id) { TaskModel.removeTask(id); }
+    }
+
+    // -------- quick-add (natural language) --------
+    QuickAddPopup {
+        id: quickAddPopup
+        parent: root.overlay
+
+        onAccepted: function(qaTitle, start, end, allDay) {
+            EventModel.createEvent(qaTitle, start, end, "", "", allDay, "", "", 0);
+            statusPopup.show("Added: " + qaTitle);
+            jumpToDate(start);
+        }
     }
 
     // -------- search popup --------

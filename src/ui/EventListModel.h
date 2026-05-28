@@ -69,6 +69,16 @@ public:
     // Search returns up to 25 matches as JS-friendly QVariantMaps for popup display.
     Q_INVOKABLE QVariantList search(const QString& q);
 
+    // Position of an all-day event among visible all-day events (-1 if not).
+    // Used by WeekView's all-day banner to stack rows tightly without gaps.
+    Q_INVOKABLE int allDayPositionOf(int eventId) const;
+    Q_INVOKABLE int visibleAllDayCount() const;
+
+    // Per-day-column overlap lane layout: returns the lane index (0-based) and
+    // total lane count for an event id within its day column. Used by WeekView
+    // to lay overlapping events side-by-side instead of on top of each other.
+    Q_INVOKABLE QVariantMap overlapLane(int eventId) const;
+
     // Polling: refresh from DB every interval; emits agentEditDetected when
     // an external writer (MCP, sync) has touched rows since the last reload.
     Q_INVOKABLE void startPolling(int intervalMs);

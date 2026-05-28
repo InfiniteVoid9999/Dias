@@ -122,33 +122,11 @@ Item {
         anchors.right: parent.right
         height: Math.max(0, _visibleAllDayCount * root.allDayRowH + 4)
         visible: height > 4
-        property int _visibleAllDayCount: 0
 
-        // Backing helper Repeater to count all-day events for height sizing.
-        Repeater {
-            id: allDayCounter
-            model: EventModel
-            delegate: Item {
-                required property bool allDay
-                required property var start
-                required property var end
-                visible: false
-                property bool inView: {
-                    var ws = root.viewStart;
-                    var we = new Date(ws); we.setDate(we.getDate() + root.dayCount);
-                    return allDay && end > ws && start < we;
-                }
-            }
-            onItemAdded: (i, item) => _recount()
-            onItemRemoved: (i, item) => _recount()
-            function _recount() {
-                var n = 0;
-                for (var i = 0; i < allDayCounter.count; i++) {
-                    var it = allDayCounter.itemAt(i);
-                    if (it && it.inView) n++;
-                }
-                allDayBanner._visibleAllDayCount = n;
-            }
+        property int _visibleAllDayCount: EventModel.visibleAllDayCount()
+        Connections {
+            target: EventModel
+            function onModelReset() { allDayBanner._visibleAllDayCount = EventModel.visibleAllDayCount(); }
         }
 
         // Stacked rows for the actual visible all-day events.
@@ -174,7 +152,7 @@ Item {
                 readonly property int startCol: Math.max(0, root._dayIndex(start))
                 readonly property int endCol: Math.min(root.dayCount - 1, root._dayIndex(end))
                 readonly property real laneW: (root.width - root.axisWidth) / root.dayCount
-                readonly property int rowIndex: index
+                readonly property int rowIndex: EventModel.allDayPositionOf(id)
 
                 visible: allDay && endCol >= 0 && startCol < root.dayCount
                 x: root.axisWidth + startCol * laneW + 2
@@ -361,14 +339,20 @@ Item {
                             required property int index
                             readonly property var seg: row.segments[index]
 
+                            // overlap-aware lane packing: query the model once per day-segment
+                            readonly property var laneInfo: EventModel.overlapLane(row.id)
+                            readonly property int laneIdx: laneInfo.lane || 0
+                            readonly property int laneCount: Math.max(1, laneInfo.lanes || 1)
+                            readonly property real slotW: (gridContent.laneWidth - Theme.sp2) / laneCount
+
                             // natural position from model
-                            readonly property real naturalX: root.axisWidth + seg.col * gridContent.laneWidth + Theme.sp1
+                            readonly property real naturalX: root.axisWidth + seg.col * gridContent.laneWidth + Theme.sp1 + laneIdx * slotW
                             readonly property real naturalY: seg.startHours * root.hourHeight
                             readonly property real naturalH: Math.max(seg.durHours * root.hourHeight - 2, 24)
 
                             x: dragArea.dragging ? dragArea.dragX : naturalX
                             y: dragArea.dragging ? dragArea.dragY : naturalY
-                            width: gridContent.laneWidth - Theme.sp2
+                            width: dragArea.dragging ? (gridContent.laneWidth - Theme.sp2) : slotW
                             height: resizeArea.resizing
                                     ? Math.max(20, resizeArea.resizeH)
                                     : naturalH

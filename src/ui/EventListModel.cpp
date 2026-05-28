@@ -2,6 +2,8 @@
 
 #include <QTimer>
 
+#include <algorithm>
+
 namespace dias {
 
 EventListModel::EventListModel(EventRepository* repo, QObject* parent)
@@ -161,6 +163,93 @@ void EventListModel::resizeEvent(int id, const QDateTime& newEnd) {
 
 void EventListModel::removeEvent(int id) {
     if (m_repo->remove(id)) reload();
+}
+
+int EventListModel::allDayPositionOf(int eventId) const {
+    int pos = 0;
+    for (const Event& e : m_events) {
+        if (!e.allDay) continue;
+        if (e.id == eventId) return pos;
+        ++pos;
+    }
+    return -1;
+}
+
+int EventListModel::visibleAllDayCount() const {
+    int n = 0;
+    for (const Event& e : m_events) if (e.allDay) ++n;
+    return n;
+}
+
+QVariantMap EventListModel::overlapLane(int eventId) const {
+    // Find the target event.
+    const Event* target = nullptr;
+    for (const Event& e : m_events) {
+        if (e.id == eventId) { target = &e; break; }
+    }
+    QVariantMap out;
+    out["lane"]  = 0;
+    out["lanes"] = 1;
+    if (!target || target->allDay) return out;
+
+    // Build the cluster of events that transitively overlap this target,
+    // staying within the same day (the calling block is per-day-segment, so
+    // we compare against the day-bounds of the target's start day).
+    const QDate day = target->start.date();
+    const QDateTime dayStart(day, QTime(0, 0));
+    const QDateTime dayEnd = dayStart.addDays(1);
+
+    auto clamp = [&](const Event& e, QDateTime& s, QDateTime& en) {
+        s  = std::max(e.start, dayStart);
+        en = std::min(e.end,   dayEnd);
+    };
+
+    QVector<const Event*> sameDay;
+    for (const Event& e : m_events) {
+        if (e.allDay) continue;
+        if (e.end <= dayStart || e.start >= dayEnd) continue;
+        sameDay.append(&e);
+    }
+    // Stable sort by start then duration.
+    std::sort(sameDay.begin(), sameDay.end(), [](const Event* a, const Event* b) {
+        if (a->start != b->start) return a->start < b->start;
+        return a->id < b->id;
+    });
+
+    // Greedy lane packing: walk in start order, place each in the first lane
+    // whose previous event ends <= this event's start.
+    QVector<QDateTime> laneEnds;
+    QHash<int, int> laneOf;
+    for (const Event* e : sameDay) {
+        QDateTime s, en;
+        clamp(*e, s, en);
+        int chosen = -1;
+        for (int i = 0; i < laneEnds.size(); ++i) {
+            if (laneEnds[i] <= s) { chosen = i; break; }
+        }
+        if (chosen < 0) {
+            chosen = laneEnds.size();
+            laneEnds.append(en);
+        } else {
+            laneEnds[chosen] = en;
+        }
+        laneOf.insert(e->id, chosen);
+    }
+
+    // Cluster width = max lane index used by anything overlapping the target.
+    QDateTime tS, tE;
+    clamp(*target, tS, tE);
+    int cluster = 1;
+    for (const Event* e : sameDay) {
+        QDateTime s, en;
+        clamp(*e, s, en);
+        if (en <= tS || s >= tE) continue;
+        cluster = std::max(cluster, laneOf.value(e->id) + 1);
+    }
+
+    out["lane"]  = laneOf.value(target->id);
+    out["lanes"] = cluster;
+    return out;
 }
 
 QVariantList EventListModel::search(const QString& q) {

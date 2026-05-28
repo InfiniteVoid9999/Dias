@@ -67,10 +67,12 @@ qt_add_qml_module(dias
         src/qml/Theme.qml
         src/qml/WeekView.qml
         src/qml/MonthView.qml
+        src/qml/YearView.qml
         src/qml/EventEditDialog.qml
         src/qml/TaskEditDialog.qml
         src/qml/TodoPanel.qml
         src/qml/RecurrenceEditor.qml
+        src/qml/QuickAddPopup.qml
 )
 
 target_link_libraries(dias PRIVATE
