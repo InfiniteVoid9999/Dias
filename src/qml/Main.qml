@@ -21,7 +21,19 @@ ApplicationWindow {
         return Qt.application.styleHints.colorScheme === Qt.Dark;
     }
     on_IsDarkChanged: Theme.dark = _isDark
-    Component.onCompleted: Theme.dark = _isDark
+    onUserThemeChanged: Settings.set("ui/userTheme", userTheme)
+
+    // Restore + then persist subsequent changes.
+    Component.onCompleted: {
+        userTheme = Settings.get("ui/userTheme", 0);
+        Theme.dark = _isDark;
+        var savedMode = Settings.get("ui/viewMode", "week");
+        if (savedMode === "day")        setDayView();
+        else if (savedMode === "month") setMonthView();
+        else if (savedMode === "year")  setYearView();
+        // week is the default — already set in main.cpp
+    }
+    onViewModeChanged: Settings.set("ui/viewMode", viewMode)
 
     Material.theme: _isDark ? Material.Dark : Material.Light
     Material.accent: Theme.accent
@@ -50,6 +62,7 @@ ApplicationWindow {
     Shortcut { sequences: ["Ctrl+F", "/"]; enabled: !editDialog.visible && !taskDialog.visible; onActivated: searchPopup.openSearch() }
     Shortcut { sequences: ["N", "Ctrl+N"]; enabled: !editDialog.visible && !taskDialog.visible && !quickAddPopup.visible; onActivated: quickAddPopup.openQuick() }
     Shortcut { sequences: ["Y"];           enabled: !editDialog.visible && !taskDialog.visible; onActivated: setYearView() }
+    Shortcut { sequences: ["?", "Shift+/"]; enabled: !editDialog.visible && !taskDialog.visible; onActivated: helpPopup.open() }
 
     function currentView() {
         return viewLoader.item;
@@ -141,6 +154,18 @@ ApplicationWindow {
             EventModel.reload();
         } else {
             statusPopup.show(r.error);
+        }
+    }
+    function doIcsSync() { icsDialog.open(); }
+    function _runIcsSync(url) {
+        var r = Ics.ingestUrl(url, 15000);
+        if (r.ok) {
+            statusPopup.show("ICS: " + r.imported + " imported, "
+                             + r.updated + " updated, " + r.skipped + " skipped");
+            EventModel.reload();
+            Settings.set("ics/lastUrl", url);
+        } else {
+            statusPopup.show("ICS sync failed: " + r.error);
         }
     }
 
@@ -336,6 +361,11 @@ ApplicationWindow {
                     onClicked: doObsidianSync()
                 }
                 IconBtn {
+                    glyph: "rss_feed"
+                    ToolTip.text: "Subscribe to .ics URL (read-only feed)"
+                    onClicked: doIcsSync()
+                }
+                IconBtn {
                     glyph: "event_available"
                     ToolTip.text: GCal.isConfigured()
                                   ? "Sync from Google Calendar"
@@ -460,6 +490,200 @@ ApplicationWindow {
             else         TaskModel.updateTask(id, taskText, d, priority);
         }
         onRemoved: function(id) { TaskModel.removeTask(id); }
+    }
+
+    // -------- .ics URL subscription dialog --------
+    Dialog {
+        id: icsDialog
+        modal: true
+        width: 540
+        padding: 0
+        title: "Subscribe to .ics feed"
+        anchors.centerIn: parent
+
+        background: Rectangle {
+            color: Theme.surface
+            radius: Theme.radiusCard
+            border.color: Theme.border
+            border.width: 1
+        }
+
+        header: Item {
+            implicitHeight: 56
+            Text {
+                anchors.left: parent.left
+                anchors.leftMargin: Theme.sp6
+                anchors.verticalCenter: parent.verticalCenter
+                text: icsDialog.title
+                font.family: Theme.sansStack[0]
+                font.pixelSize: Theme.textTitle
+                font.weight: Theme.weightBold
+                color: Theme.fg
+            }
+        }
+
+        contentItem: ColumnLayout {
+            spacing: Theme.sp3
+
+            TextField {
+                id: icsUrlField
+                Layout.fillWidth: true
+                Layout.leftMargin: Theme.sp6
+                Layout.rightMargin: Theme.sp6
+                placeholderText: "https://… or webcal://…"
+                font.family: Theme.monoStack[0]
+                font.pixelSize: Theme.textBody
+                Material.accent: Theme.accent
+                color: Theme.fg
+                Keys.onReturnPressed: icsSyncBtn.clicked()
+                Keys.onEnterPressed: icsSyncBtn.clicked()
+                Component.onCompleted: text = Settings.get("ics/lastUrl", "")
+            }
+
+            Text {
+                Layout.fillWidth: true
+                Layout.leftMargin: Theme.sp6
+                Layout.rightMargin: Theme.sp6
+                text: "Re-syncing the same URL updates existing events in place via the UID mapping in sync_sources."
+                wrapMode: Text.Wrap
+                color: Theme.fgSubtle
+                font.family: Theme.sansStack[0]
+                font.pixelSize: Theme.textCaption
+            }
+
+            Item { Layout.preferredHeight: Theme.sp1 }
+        }
+
+        footer: Item {
+            implicitHeight: 64
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: Theme.sp4
+                anchors.rightMargin: Theme.sp4
+                spacing: Theme.sp2
+
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Cancel"
+                    flat: true
+                    Material.foreground: Theme.fgMuted
+                    onClicked: icsDialog.close()
+                }
+                Button {
+                    id: icsSyncBtn
+                    text: "Sync"
+                    highlighted: true
+                    Material.accent: Theme.accent
+                    Material.foreground: Theme.onAccent
+                    enabled: icsUrlField.text.trim() !== ""
+                    onClicked: {
+                        _runIcsSync(icsUrlField.text.trim());
+                        icsDialog.close();
+                    }
+                }
+            }
+        }
+    }
+
+    // -------- keyboard shortcuts overlay --------
+    Popup {
+        id: helpPopup
+        modal: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        width: 520
+        x: (root.width - width) / 2
+        y: 120
+        padding: 0
+
+        background: Rectangle {
+            color: Theme.surface
+            radius: Theme.radiusCard
+            border.color: Theme.border
+            border.width: 1
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 0
+
+            Item {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 56
+                Text {
+                    anchors.left: parent.left
+                    anchors.leftMargin: Theme.sp6
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Keyboard shortcuts"
+                    font.family: Theme.sansStack[0]
+                    font.pixelSize: Theme.textTitle
+                    font.weight: Theme.weightBold
+                    color: Theme.fg
+                }
+            }
+            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
+
+            GridLayout {
+                Layout.fillWidth: true
+                Layout.margins: Theme.sp5
+                columns: 2
+                rowSpacing: Theme.sp2
+                columnSpacing: Theme.sp5
+
+                // helper component for a kbd-style chip
+                component Kbd: Rectangle {
+                    property string label: ""
+                    implicitWidth: kbdText.implicitWidth + Theme.sp3
+                    implicitHeight: 22
+                    radius: 4
+                    color: Theme.bg
+                    border.color: Theme.border
+                    border.width: 1
+                    Text {
+                        id: kbdText
+                        anchors.centerIn: parent
+                        text: parent.label
+                        font.family: Theme.monoStack[0]
+                        font.pixelSize: Theme.textCaption
+                        color: Theme.fgMuted
+                    }
+                }
+
+                Repeater {
+                    model: [
+                        { keys: ["N"],                desc: "Quick add (natural language)" },
+                        { keys: ["Ctrl+F", "/"],      desc: "Search events" },
+                        { keys: ["?"],                desc: "This help" },
+                        { keys: ["D"],                desc: "Day view" },
+                        { keys: ["W"],                desc: "Week view" },
+                        { keys: ["M"],                desc: "Month view" },
+                        { keys: ["Y"],                desc: "Year view" },
+                        { keys: ["T"],                desc: "Jump to today" },
+                        { keys: ["←", "H"],           desc: "Previous period" },
+                        { keys: ["→", "L"],           desc: "Next period" },
+                        { keys: ["Ctrl+E"],           desc: "Export to ~/Dias/export/" },
+                        { keys: ["Esc"],              desc: "Close dialog / quit" },
+                        { keys: ["Enter"],            desc: "Submit dialog" }
+                    ]
+                    delegate: RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.sp2
+                        Row {
+                            spacing: 4
+                            Repeater {
+                                model: modelData.keys
+                                Kbd { label: modelData }
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: modelData.desc
+                            color: Theme.fg
+                            font.family: Theme.sansStack[0]
+                            font.pixelSize: Theme.textBody
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // -------- quick-add (natural language) --------

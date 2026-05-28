@@ -11,7 +11,7 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug)
 endif()
 
-find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Sql DBus)
+find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Sql DBus Network)
 
 qt_standard_project_setup(REQUIRES 6.6)
 qt_policy(SET QTP0004 NEW)
@@ -31,18 +31,22 @@ add_library(dias-core STATIC
     src/core/ExportService.h
     src/core/GCalSync.cpp
     src/core/GCalSync.h
+    src/core/IcsSync.cpp
+    src/core/IcsSync.h
     src/core/ObsidianIngest.cpp
     src/core/ObsidianIngest.h
     src/core/ReminderService.cpp
     src/core/ReminderService.h
     src/core/RRule.cpp
     src/core/RRule.h
+    src/core/SettingsService.cpp
+    src/core/SettingsService.h
     src/core/Task.h
     src/core/TaskRepository.cpp
     src/core/TaskRepository.h
 )
 target_include_directories(dias-core PUBLIC src)
-target_link_libraries(dias-core PUBLIC Qt6::Core Qt6::Sql Qt6::DBus)
+target_link_libraries(dias-core PUBLIC Qt6::Core Qt6::Sql Qt6::DBus Qt6::Network)
 
 # -----------------------------------------------------------------------------
 # dias: the Qt Quick UI binary.

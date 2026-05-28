@@ -27,15 +27,18 @@ QDateTime parseIso(const QString& s) {
 
 QJsonObject eventJson(const Event& e) {
     QJsonObject o;
-    o["id"]             = e.id;
-    o["title"]          = e.title;
-    o["start"]          = isoLocal(e.start);
-    o["end"]            = isoLocal(e.end);
-    o["all_day"]        = e.allDay;
-    o["category"]       = e.category;
-    o["source"]         = e.source;
-    o["created_by"]     = e.createdBy;
-    o["last_edited_by"] = e.lastEditedBy;
+    o["id"]               = e.id;
+    o["title"]            = e.title;
+    o["start"]            = isoLocal(e.start);
+    o["end"]              = isoLocal(e.end);
+    o["all_day"]          = e.allDay;
+    o["category"]         = e.category;
+    o["source"]           = e.source;
+    o["created_by"]       = e.createdBy;
+    o["last_edited_by"]   = e.lastEditedBy;
+    o["notes"]            = e.notes;
+    o["location"]         = e.location;
+    o["reminder_minutes"] = e.reminderMinutes;
     if (!e.rrule.isEmpty()) o["rrule"] = e.rrule;
     return o;
 }
@@ -86,10 +89,15 @@ QJsonArray toolSchemas() {
     // create_event
     {
         QJsonObject p;
-        p["title"]     = mkProp("string", "Event title");
-        p["start_iso"] = mkProp("string", "ISO 8601 start (local time)");
-        p["end_iso"]   = mkProp("string", "ISO 8601 end (local time)");
-        p["category"]  = mkProp("string", "Optional category tag");
+        p["title"]            = mkProp("string",  "Event title");
+        p["start_iso"]        = mkProp("string",  "ISO 8601 start (local time)");
+        p["end_iso"]          = mkProp("string",  "ISO 8601 end (local time)");
+        p["category"]         = mkProp("string",  "Optional category tag");
+        p["all_day"]          = mkProp("boolean", "Optional all-day flag");
+        p["notes"]            = mkProp("string",  "Optional notes/description");
+        p["location"]         = mkProp("string",  "Optional location");
+        p["rrule"]            = mkProp("string",  "Optional RRULE (RFC 5545)");
+        p["reminder_minutes"] = mkProp("integer", "Optional reminder offset");
         tools.append(mkTool("create_event",
             "Create a new event. Marked as agent-sourced for UI source-tinting. Returns the created event including its id.",
             p, {"title", "start_iso", "end_iso"}));
@@ -97,14 +105,28 @@ QJsonArray toolSchemas() {
     // update_event
     {
         QJsonObject p;
-        p["id"]        = mkProp("integer", "Event id");
-        p["title"]     = mkProp("string",  "New title (optional)");
-        p["start_iso"] = mkProp("string",  "New ISO start (optional)");
-        p["end_iso"]   = mkProp("string",  "New ISO end (optional)");
-        p["category"]  = mkProp("string",  "New category (optional)");
+        p["id"]               = mkProp("integer", "Event id");
+        p["title"]            = mkProp("string",  "New title (optional)");
+        p["start_iso"]        = mkProp("string",  "New ISO start (optional)");
+        p["end_iso"]          = mkProp("string",  "New ISO end (optional)");
+        p["category"]         = mkProp("string",  "New category (optional)");
+        p["all_day"]          = mkProp("boolean", "New all-day flag (optional)");
+        p["notes"]            = mkProp("string",  "New notes (optional)");
+        p["location"]         = mkProp("string",  "New location (optional)");
+        p["rrule"]            = mkProp("string",  "New RRULE (optional, empty string clears)");
+        p["reminder_minutes"] = mkProp("integer", "New reminder offset (optional)");
         tools.append(mkTool("update_event",
             "Partially update an existing event by id. Omitted fields are preserved.",
             p, {"id"}));
+    }
+    // search_events
+    {
+        QJsonObject p;
+        p["query"] = mkProp("string", "Substring to match against title/notes/location/category");
+        p["limit"] = mkProp("integer", "Max results (default 25)");
+        tools.append(mkTool("search_events",
+            "Search events by substring across title, notes, location, category. Most-recent first.",
+            p, {"query"}));
     }
     // delete_event
     {
@@ -263,6 +285,7 @@ QJsonObject McpServer::handleToolsCall(const QJsonObject& params) {
     if (name == "create_event")   return toolCreateEvent(args);
     if (name == "update_event")   return toolUpdateEvent(args);
     if (name == "delete_event")   return toolDeleteEvent(args);
+    if (name == "search_events")  return toolSearchEvents(args);
     if (name == "list_tasks")     return toolListTasks(args);
     if (name == "create_task")    return toolCreateTask(args);
     if (name == "update_task")    return toolUpdateTask(args);
@@ -293,13 +316,18 @@ QJsonObject McpServer::toolListEvents(const QJsonObject& args) {
 
 QJsonObject McpServer::toolCreateEvent(const QJsonObject& args) {
     Event e;
-    e.title    = args.value("title").toString();
-    e.start    = parseIso(args.value("start_iso").toString());
-    e.end      = parseIso(args.value("end_iso").toString());
-    e.category = args.value("category").toString();
-    e.source       = "agent";
-    e.createdBy    = "agent";
-    e.lastEditedBy = "agent";
+    e.title           = args.value("title").toString();
+    e.start           = parseIso(args.value("start_iso").toString());
+    e.end             = parseIso(args.value("end_iso").toString());
+    e.category        = args.value("category").toString();
+    e.allDay          = args.value("all_day").toBool();
+    e.notes           = args.value("notes").toString();
+    e.location        = args.value("location").toString();
+    e.rrule           = args.value("rrule").toString();
+    e.reminderMinutes = args.value("reminder_minutes").toInt();
+    e.source          = "agent";
+    e.createdBy       = "agent";
+    e.lastEditedBy    = "agent";
 
     QJsonObject result;
     QJsonArray content;
@@ -352,8 +380,13 @@ QJsonObject McpServer::toolUpdateEvent(const QJsonObject& args) {
         return result;
     }
 
-    if (args.contains("title"))     current.title    = args.value("title").toString();
-    if (args.contains("category"))  current.category = args.value("category").toString();
+    if (args.contains("title"))            current.title           = args.value("title").toString();
+    if (args.contains("category"))         current.category        = args.value("category").toString();
+    if (args.contains("all_day"))          current.allDay          = args.value("all_day").toBool();
+    if (args.contains("notes"))            current.notes           = args.value("notes").toString();
+    if (args.contains("location"))         current.location        = args.value("location").toString();
+    if (args.contains("rrule"))            current.rrule           = args.value("rrule").toString();
+    if (args.contains("reminder_minutes")) current.reminderMinutes = args.value("reminder_minutes").toInt();
     if (args.contains("start_iso")) {
         QDateTime s = parseIso(args.value("start_iso").toString());
         if (s.isValid()) current.start = s;
@@ -382,6 +415,19 @@ QJsonObject McpServer::toolDeleteEvent(const QJsonObject& args) {
     const bool ok = id > 0 && m_events->remove(id);
     content.append(textContent(ok ? "ok" : "delete failed"));
     if (!ok) result["isError"] = true;
+    result["content"] = content;
+    return result;
+}
+
+QJsonObject McpServer::toolSearchEvents(const QJsonObject& args) {
+    const QString q = args.value("query").toString();
+    int limit = args.value("limit").toInt();
+    if (limit <= 0) limit = 25;
+    QJsonArray arr;
+    for (const Event& e : m_events->search(q, limit)) arr.append(eventJson(e));
+    QJsonObject result;
+    QJsonArray content;
+    content.append(textContent(QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Indented))));
     result["content"] = content;
     return result;
 }

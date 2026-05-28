@@ -53,6 +53,7 @@ private:
     QJsonObject toolCreateEvent(const QJsonObject& args);
     QJsonObject toolUpdateEvent(const QJsonObject& args);
     QJsonObject toolDeleteEvent(const QJsonObject& args);
+    QJsonObject toolSearchEvents(const QJsonObject& args);
     QJsonObject toolListTasks(const QJsonObject& args);
     QJsonObject toolCreateTask(const QJsonObject& args);
     QJsonObject toolUpdateTask(const QJsonObject& args);
