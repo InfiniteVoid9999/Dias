@@ -1,3 +1,4 @@
+#include "core/CalendarRepository.h"
 #include "core/Database.h"
 #include "core/EventRepository.h"
 #include "core/ExportService.h"
@@ -7,8 +8,10 @@
 #include "core/ReminderService.h"
 #include "core/SettingsService.h"
 #include "core/TaskRepository.h"
+#include "ui/CalendarListModel.h"
 #include "ui/EventListModel.h"
 #include "ui/TaskListModel.h"
+#include "ui/UndoService.h"
 
 #include <QDateTime>
 #include <QGuiApplication>
@@ -57,16 +60,36 @@ int main(int argc, char* argv[]) {
     dias::Database db(dias::Database::defaultPath());
     if (!db.open()) return 1;
 
-    dias::EventRepository eventRepo(db.handle());
-    dias::TaskRepository  taskRepo(db.handle());
+    dias::EventRepository    eventRepo(db.handle());
+    dias::TaskRepository     taskRepo(db.handle());
+    dias::CalendarRepository calRepo(db.handle());
+
+    dias::UndoService undoSvc;
+    dias::CalendarListModel calendarModel(&calRepo);
 
     dias::EventListModel eventModel(&eventRepo);
+    eventModel.setCalendarColorLookup(&calendarModel);
+    eventModel.setUndoService(&undoSvc);
     eventModel.setViewDays(7);
     eventModel.setViewStart(mondayOfWeek(QDateTime::currentDateTime()));
-    eventModel.startPolling(2000);  // pick up external writes (MCP, sync) ~live
+    eventModel.startPolling(2000);
 
     dias::TaskListModel taskModel(&taskRepo);
     taskModel.startPolling(2000);
+
+    // When calendar visibility flips, re-filter events live.
+    QObject::connect(&calendarModel, &dias::CalendarListModel::visibilityChanged,
+        [&]() {
+            QVariantList ids;
+            for (int id : calendarModel.visibleIdList()) ids.append(id);
+            eventModel.setVisibleCalendarIds(ids);
+        });
+    // Seed the initial filter.
+    {
+        QVariantList ids;
+        for (int id : calendarModel.visibleIdList()) ids.append(id);
+        eventModel.setVisibleCalendarIds(ids);
+    }
 
     dias::ExportService exporter(&eventRepo, &taskRepo);
     dias::ObsidianIngest obsidian(&eventRepo, &taskRepo, db.handle());
@@ -95,13 +118,15 @@ int main(int argc, char* argv[]) {
             std::fprintf(stderr, "[qml] objectCreationFailed: %s\n", url.toString().toUtf8().constData());
             std::fflush(stderr);
         });
-    engine.rootContext()->setContextProperty("EventModel", &eventModel);
-    engine.rootContext()->setContextProperty("TaskModel",  &taskModel);
-    engine.rootContext()->setContextProperty("Exporter",   &exporter);
-    engine.rootContext()->setContextProperty("Obsidian",   &obsidian);
-    engine.rootContext()->setContextProperty("GCal",       &gcal);
-    engine.rootContext()->setContextProperty("Ics",        &ics);
-    engine.rootContext()->setContextProperty("Settings",   &settings);
+    engine.rootContext()->setContextProperty("EventModel",    &eventModel);
+    engine.rootContext()->setContextProperty("TaskModel",     &taskModel);
+    engine.rootContext()->setContextProperty("CalendarModel", &calendarModel);
+    engine.rootContext()->setContextProperty("Undo",          &undoSvc);
+    engine.rootContext()->setContextProperty("Exporter",      &exporter);
+    engine.rootContext()->setContextProperty("Obsidian",      &obsidian);
+    engine.rootContext()->setContextProperty("GCal",          &gcal);
+    engine.rootContext()->setContextProperty("Ics",           &ics);
+    engine.rootContext()->setContextProperty("Settings",      &settings);
     engine.loadFromModule("Dias", "Main");
     if (engine.rootObjects().isEmpty()) {
         std::fprintf(stderr, "[dias] root objects empty -- QML load failed\n");

@@ -22,6 +22,9 @@ qt_policy(SET QTP0004 NEW)
 # the agent spine (MCP server) headless and link-clean.
 # -----------------------------------------------------------------------------
 add_library(dias-core STATIC
+    src/core/Calendar.h
+    src/core/CalendarRepository.cpp
+    src/core/CalendarRepository.h
     src/core/Database.cpp
     src/core/Database.h
     src/core/Event.h
@@ -53,10 +56,14 @@ target_link_libraries(dias-core PUBLIC Qt6::Core Qt6::Sql Qt6::DBus Qt6::Network
 # -----------------------------------------------------------------------------
 qt_add_executable(dias
     src/main.cpp
+    src/ui/CalendarListModel.cpp
+    src/ui/CalendarListModel.h
     src/ui/EventListModel.cpp
     src/ui/EventListModel.h
     src/ui/TaskListModel.cpp
     src/ui/TaskListModel.h
+    src/ui/UndoService.cpp
+    src/ui/UndoService.h
 )
 
 set_source_files_properties(src/qml/Theme.qml PROPERTIES

@@ -6,6 +6,8 @@
 #include <QAbstractListModel>
 #include <QDateTime>
 #include <QHash>
+#include <QSet>
+#include <QVariantList>
 #include <QVector>
 
 QT_FORWARD_DECLARE_CLASS(QTimer)
@@ -34,6 +36,8 @@ public:
         ReminderRole,
         LaneRole,
         LanesRole,
+        CalendarIdRole,
+        CalendarColorRole,
     };
 
     explicit EventListModel(EventRepository* repo, QObject* parent = nullptr);
@@ -55,18 +59,27 @@ public:
                                  bool allDay = false,
                                  const QString& notes = {},
                                  const QString& location = {},
-                                 int reminderMinutes = 0);
+                                 int reminderMinutes = 0,
+                                 int calendarId = 1);
     Q_INVOKABLE void updateEvent(int id, const QString& title, const QDateTime& start,
                                  const QDateTime& end, const QString& category,
                                  const QString& rrule = {},
                                  bool allDay = false,
                                  const QString& notes = {},
                                  const QString& location = {},
-                                 int reminderMinutes = 0);
+                                 int reminderMinutes = 0,
+                                 int calendarId = 1);
     // Lightweight drag/resize updates that don't require the full payload.
     Q_INVOKABLE void moveEvent(int id, const QDateTime& newStart);
     Q_INVOKABLE void resizeEvent(int id, const QDateTime& newEnd);
     Q_INVOKABLE void removeEvent(int id);
+
+    // Calendar visibility filter — set from CalendarListModel.visibleIdList().
+    Q_INVOKABLE void setVisibleCalendarIds(const QVariantList& ids);
+    // Per-calendar color lookup hook (called from C++ side by the host).
+    void setCalendarColorLookup(class CalendarListModel* m) { m_calendars = m; }
+    // Undo hook — when present, mutations record reversible operations.
+    void setUndoService(class UndoService* u) { m_undoService = u; }
 
     // Search returns up to 25 matches as JS-friendly QVariantMaps for popup display.
     Q_INVOKABLE QVariantList search(const QString& q);
@@ -101,6 +114,10 @@ private:
     QHash<int, int>    m_laneOf;          // id -> lane index (precomputed at reload)
     QHash<int, int>    m_lanesOf;         // id -> total lanes in its cluster
     QString            m_lastDataKey;     // diff key to skip no-op reloads
+    QSet<int>          m_visibleCalendarIds;
+    bool               m_visibilityFilterSet = false;
+    class CalendarListModel* m_calendars = nullptr;  // non-owning, for color lookup
+    class UndoService*       m_undoService = nullptr;
     QTimer* m_pollTimer = nullptr;
 };
 

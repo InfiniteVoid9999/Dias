@@ -27,12 +27,12 @@ int EventRepository::insert(const Event& e) {
         INSERT INTO events
             (title, start_ts, end_ts, all_day, category, source,
              created_by, last_edited_by, rrule,
-             notes, location, reminder_minutes,
+             notes, location, reminder_minutes, calendar_id,
              created_at, updated_at)
         VALUES
             (:title, :start, :end, :all_day, :category, :source,
              :created_by, :last_edited_by, :rrule,
-             :notes, :location, :reminder,
+             :notes, :location, :reminder, :calendar,
              :ts, :ts)
     )");
     const qint64 ts = nowSec();
@@ -48,6 +48,7 @@ int EventRepository::insert(const Event& e) {
     q.bindValue(":notes", e.notes);
     q.bindValue(":location", e.location);
     q.bindValue(":reminder", e.reminderMinutes);
+    q.bindValue(":calendar", e.calendarId > 0 ? e.calendarId : 1);
     q.bindValue(":ts", ts);
     if (!q.exec()) {
         qWarning() << "Event insert failed:" << q.lastError().text();
@@ -70,6 +71,7 @@ bool EventRepository::update(const Event& e) {
             notes            = :notes,
             location         = :location,
             reminder_minutes = :reminder,
+            calendar_id      = :calendar,
             updated_at       = :ts
         WHERE id = :id
     )");
@@ -83,6 +85,7 @@ bool EventRepository::update(const Event& e) {
     q.bindValue(":notes", e.notes);
     q.bindValue(":location", e.location);
     q.bindValue(":reminder", e.reminderMinutes);
+    q.bindValue(":calendar", e.calendarId > 0 ? e.calendarId : 1);
     q.bindValue(":ts", nowSec());
     q.bindValue(":id", e.id);
     if (!q.exec()) {
@@ -121,6 +124,7 @@ Event rowToEvent(QSqlQuery& q) {
     e.notes           = q.value(11).toString();
     e.location        = q.value(12).toString();
     e.reminderMinutes = q.value(13).toInt();
+    e.calendarId      = q.value(14).toInt();
     return e;
 }
 
@@ -131,7 +135,7 @@ QVector<Event> EventRepository::inRange(const QDateTime& from, const QDateTime& 
     q.prepare(R"(
         SELECT id, title, start_ts, end_ts, all_day, category, source,
                created_by, last_edited_by, rrule, updated_at,
-               notes, location, reminder_minutes
+               notes, location, reminder_minutes, calendar_id
         FROM events
         WHERE start_ts < :to AND end_ts > :from
         ORDER BY start_ts
@@ -180,7 +184,7 @@ QVector<Event> EventRepository::expandedInRange(const QDateTime& from, const QDa
         q.prepare(R"(
             SELECT id, title, start_ts, end_ts, all_day, category, source,
                    created_by, last_edited_by, rrule, updated_at,
-                   notes, location, reminder_minutes
+                   notes, location, reminder_minutes, calendar_id
             FROM events
             WHERE (rrule IS NULL OR rrule = '')
               AND start_ts < :to AND end_ts > :from
@@ -201,7 +205,7 @@ QVector<Event> EventRepository::expandedInRange(const QDateTime& from, const QDa
         q.prepare(R"(
             SELECT id, title, start_ts, end_ts, all_day, category, source,
                    created_by, last_edited_by, rrule, updated_at,
-                   notes, location, reminder_minutes
+                   notes, location, reminder_minutes, calendar_id
             FROM events
             WHERE rrule IS NOT NULL AND rrule != '' AND start_ts < :to
         )");

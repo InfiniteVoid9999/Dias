@@ -516,9 +516,9 @@ ApplicationWindow {
         id: editDialog
         anchors.centerIn: parent
 
-        onSaved: function(id, evTitle, start, end, category, rrule, allDay, notes, loc, reminder) {
-            if (id <= 0) EventModel.createEvent(evTitle, start, end, category, rrule, allDay, notes, loc, reminder);
-            else         EventModel.updateEvent(id, evTitle, start, end, category, rrule, allDay, notes, loc, reminder);
+        onSaved: function(id, evTitle, start, end, category, rrule, allDay, notes, loc, reminder, calId) {
+            if (id <= 0) EventModel.createEvent(evTitle, start, end, category, rrule, allDay, notes, loc, reminder, calId);
+            else         EventModel.updateEvent(id, evTitle, start, end, category, rrule, allDay, notes, loc, reminder, calId);
         }
         onRemoved: function(id) { EventModel.removeEvent(id); }
     }
@@ -735,7 +735,14 @@ ApplicationWindow {
         parent: root.overlay
 
         onAccepted: function(qaTitle, start, end, allDay) {
-            EventModel.createEvent(qaTitle, start, end, "", "", allDay, "", "", 0);
+            // default to the first visible calendar (or 1)
+            var visible = [];
+            for (var i = 0; i < CalendarModel.rowCount(); i++) {
+                var v = CalendarModel.data(CalendarModel.index(i, 0), 259); // VisibleRole
+                if (v) visible.push(CalendarModel.data(CalendarModel.index(i, 0), 257)); // IdRole
+            }
+            var calId = visible.length > 0 ? visible[0] : 1;
+            EventModel.createEvent(qaTitle, start, end, "", "", allDay, "", "", 0, calId);
             statusPopup.show("Added: " + qaTitle);
             jumpToDate(start);
         }

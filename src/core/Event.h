@@ -18,7 +18,8 @@ struct Event {
     QString rrule;
     QString notes;
     QString location;
-    int reminderMinutes = 0;  // 0 = none
+    int reminderMinutes = 0;
+    int calendarId = 1;  // FK → calendars.id; default Personal
     qint64 updatedAt = 0;
 };
 

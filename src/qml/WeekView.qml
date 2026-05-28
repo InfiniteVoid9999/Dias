@@ -147,8 +147,11 @@ Item {
                 required property string notes
                 required property string location
                 required property int reminderMinutes
+                required property string calendarColor
 
-                readonly property color baseColor: Theme.categoryColor(category, source)
+                readonly property color baseColor: calendarColor !== ""
+                                                  ? calendarColor
+                                                  : Theme.categoryColor(category, source)
                 readonly property int startCol: Math.max(0, root._dayIndex(start))
                 readonly property int endCol: Math.min(root.dayCount - 1, root._dayIndex(end))
                 readonly property real laneW: (root.width - root.axisWidth) / root.dayCount
@@ -297,11 +300,14 @@ Item {
                     required property int reminderMinutes
                     required property int lane
                     required property int lanes
+                    required property string calendarColor
 
                     visible: !allDay
                     anchors.fill: parent
 
-                    readonly property color baseColor: Theme.categoryColor(category, source)
+                    readonly property color baseColor: calendarColor !== ""
+                                                      ? calendarColor
+                                                      : Theme.categoryColor(category, source)
                     readonly property bool isRecurringInstance: rrule !== ""
 
                     // Build per-day segments for events that span multiple days.

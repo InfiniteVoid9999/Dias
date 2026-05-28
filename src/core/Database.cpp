@@ -6,11 +6,13 @@
 #include <QtSql/QSqlError>
 #include <QtSql/QSqlQuery>
 
+#include <cstdio>
+
 namespace dias {
 
 namespace {
 
-constexpr int kCurrentSchemaVersion = 3;
+constexpr int kCurrentSchemaVersion = 4;
 
 const char* kSchemaV1 = R"sql(
 CREATE TABLE events (
@@ -64,6 +66,27 @@ const char* kSchemaV3 = R"sql(
 ALTER TABLE events ADD COLUMN notes            TEXT NOT NULL DEFAULT '';
 ALTER TABLE events ADD COLUMN location         TEXT NOT NULL DEFAULT '';
 ALTER TABLE events ADD COLUMN reminder_minutes INTEGER NOT NULL DEFAULT 0;
+)sql";
+
+// SQLite limitation: ADD COLUMN with non-NULL default cannot also declare a
+// REFERENCES constraint. We add the column plain; CalendarRepository protects
+// the default calendar from deletion and EventListModel falls back to the
+// category color when a calendar lookup misses, so no orphaning happens.
+const char* kSchemaV4 = R"sql(
+CREATE TABLE calendars (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT    NOT NULL,
+    color       TEXT    NOT NULL DEFAULT '#cba6f7',
+    visible     INTEGER NOT NULL DEFAULT 1,
+    created_at  INTEGER NOT NULL
+);
+
+INSERT INTO calendars (name, color, visible, created_at)
+VALUES ('Personal', '#cba6f7', 1, strftime('%s','now'));
+
+ALTER TABLE events ADD COLUMN calendar_id INTEGER NOT NULL DEFAULT 1;
+
+CREATE INDEX idx_events_calendar ON events(calendar_id);
 )sql";
 
 } // namespace
@@ -130,8 +153,12 @@ void Database::migrate() {
             const QString trimmed = stmt.trimmed();
             if (trimmed.isEmpty()) continue;
             if (!q.exec(trimmed)) {
-                qCritical() << "Migration v" << version << " failed:" << q.lastError().text()
-                            << "stmt:" << trimmed;
+                std::fprintf(stderr, "[dias] migration v%d FAILED: %s\n  sql: %s\n",
+                             version,
+                             q.lastError().text().toUtf8().constData(),
+                             trimmed.toUtf8().constData());
+                std::fflush(stderr);
+                qCritical() << "Migration v" << version << " failed:" << q.lastError().text();
                 m_db.rollback();
                 return false;
             }
@@ -142,6 +169,7 @@ void Database::migrate() {
     if (from < 1) { if (!runScript(kSchemaV1, 1)) return; }
     if (from < 2) { if (!runScript(kSchemaV2, 2)) return; }
     if (from < 3) { if (!runScript(kSchemaV3, 3)) return; }
+    if (from < 4) { if (!runScript(kSchemaV4, 4)) return; }
 
     setUserVersion(kCurrentSchemaVersion);
     m_db.commit();

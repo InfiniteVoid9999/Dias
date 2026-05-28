@@ -197,6 +197,7 @@ Item {
                             required property string notes
                             required property string location
                             required property int reminderMinutes
+                            required property string calendarColor
 
                             property bool sameDay: start.getFullYear() === cell.cellDay.getFullYear()
                                                 && start.getMonth()   === cell.cellDay.getMonth()
@@ -222,7 +223,9 @@ Item {
                             Rectangle {
                                 anchors.fill: parent
                                 radius: 4
-                                color: Qt.alpha(Theme.categoryColor(chip.category, chip.source), 0.85)
+                                color: Qt.alpha(chip.calendarColor !== ""
+                                                ? chip.calendarColor
+                                                : Theme.categoryColor(chip.category, chip.source), 0.85)
 
                                 Text {
                                     anchors.fill: parent

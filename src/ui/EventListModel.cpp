@@ -1,8 +1,11 @@
 #include "EventListModel.h"
+#include "CalendarListModel.h"
+#include "UndoService.h"
 
 #include <QTimer>
 
 #include <algorithm>
+#include <memory>
 
 namespace dias {
 
@@ -37,6 +40,9 @@ QVariant EventListModel::data(const QModelIndex& index, int role) const {
         case ReminderRole:     return e.reminderMinutes;
         case LaneRole:         return m_laneOf.value(e.id, 0);
         case LanesRole:        return m_lanesOf.value(e.id, 1);
+        case CalendarIdRole:   return e.calendarId;
+        case CalendarColorRole:
+            return m_calendars ? m_calendars->colorOf(e.calendarId) : QString();
     }
     return {};
 }
@@ -58,6 +64,8 @@ QHash<int, QByteArray> EventListModel::roleNames() const {
         {ReminderRole,     "reminderMinutes"},
         {LaneRole,         "lane"},
         {LanesRole,        "lanes"},
+        {CalendarIdRole,   "calendarId"},
+        {CalendarColorRole,"calendarColor"},
     };
 }
 
@@ -81,6 +89,16 @@ void EventListModel::reload() {
 
     // expandedInRange returns RRULE-expanded instances for the visible window.
     QVector<Event> fresh = m_repo->expandedInRange(m_viewStart, m_viewStart.addDays(m_viewDays));
+
+    // Apply calendar visibility filter if one is set.
+    if (m_visibilityFilterSet) {
+        QVector<Event> kept;
+        kept.reserve(fresh.size());
+        for (const Event& e : fresh) {
+            if (m_visibleCalendarIds.contains(e.calendarId)) kept.push_back(e);
+        }
+        fresh = std::move(kept);
+    }
 
     // Detect agent edits since last reload — these get a transient pulse.
     QHash<int, qint64> newRecent;
@@ -175,7 +193,7 @@ void EventListModel::createEvent(const QString& title, const QDateTime& start,
                                  const QDateTime& end, const QString& category,
                                  const QString& rrule, bool allDay,
                                  const QString& notes, const QString& location,
-                                 int reminderMinutes) {
+                                 int reminderMinutes, int calendarId) {
     Event e;
     e.title           = title;
     e.start           = start;
@@ -186,6 +204,7 @@ void EventListModel::createEvent(const QString& title, const QDateTime& start,
     e.notes           = notes;
     e.location        = location;
     e.reminderMinutes = reminderMinutes;
+    e.calendarId      = calendarId > 0 ? calendarId : 1;
     if (m_repo->insert(e) > 0) reload();
 }
 
@@ -193,8 +212,13 @@ void EventListModel::updateEvent(int id, const QString& title, const QDateTime& 
                                  const QDateTime& end, const QString& category,
                                  const QString& rrule, bool allDay,
                                  const QString& notes, const QString& location,
-                                 int reminderMinutes) {
-    Event e;
+                                 int reminderMinutes, int calendarId) {
+    Event prev;
+    bool found = false;
+    for (const Event& cur : m_events) {
+        if (cur.id == id) { prev = cur; found = true; break; }
+    }
+    Event e = prev;  // preserves source/createdBy/updatedAt fields
     e.id              = id;
     e.title           = title;
     e.start           = start;
@@ -205,17 +229,47 @@ void EventListModel::updateEvent(int id, const QString& title, const QDateTime& 
     e.notes           = notes;
     e.location        = location;
     e.reminderMinutes = reminderMinutes;
-    if (m_repo->update(e)) reload();
+    e.calendarId      = calendarId > 0 ? calendarId : 1;
+    if (m_repo->update(e)) {
+        if (found && m_undoService) {
+            auto repo = m_repo;
+            auto self = this;
+            m_undoService->push("Edit \"" + prev.title + "\"",
+                [repo, self, prev]() { repo->update(prev); self->reload(); },
+                [repo, self, e]()    { repo->update(e);    self->reload(); });
+        }
+        reload();
+    }
+}
+
+void EventListModel::setVisibleCalendarIds(const QVariantList& ids) {
+    QSet<int> s;
+    for (const QVariant& v : ids) s.insert(v.toInt());
+    if (s == m_visibleCalendarIds && m_visibilityFilterSet) return;
+    m_visibleCalendarIds = s;
+    m_visibilityFilterSet = true;
+    m_lastDataKey.clear();  // force reload
+    reload();
 }
 
 void EventListModel::moveEvent(int id, const QDateTime& newStart) {
     for (const Event& cur : m_events) {
         if (cur.id == id) {
+            Event prev = cur;
             Event next = cur;
             const qint64 dur = cur.start.secsTo(cur.end);
             next.start = newStart;
             next.end   = newStart.addSecs(dur);
-            if (m_repo->update(next)) reload();
+            if (m_repo->update(next)) {
+                if (m_undoService) {
+                    auto repo = m_repo;
+                    auto self = this;
+                    m_undoService->push("Move \"" + cur.title + "\"",
+                        [repo, self, prev]() { repo->update(prev); self->reload(); },
+                        [repo, self, next]() { repo->update(next); self->reload(); });
+                }
+                reload();
+            }
             return;
         }
     }
@@ -224,10 +278,19 @@ void EventListModel::moveEvent(int id, const QDateTime& newStart) {
 void EventListModel::resizeEvent(int id, const QDateTime& newEnd) {
     for (const Event& cur : m_events) {
         if (cur.id == id) {
+            if (newEnd <= cur.start) return;
+            Event prev = cur;
             Event next = cur;
-            if (newEnd > cur.start) {
-                next.end = newEnd;
-                if (m_repo->update(next)) reload();
+            next.end = newEnd;
+            if (m_repo->update(next)) {
+                if (m_undoService) {
+                    auto repo = m_repo;
+                    auto self = this;
+                    m_undoService->push("Resize \"" + cur.title + "\"",
+                        [repo, self, prev]() { repo->update(prev); self->reload(); },
+                        [repo, self, next]() { repo->update(next); self->reload(); });
+                }
+                reload();
             }
             return;
         }
@@ -235,7 +298,36 @@ void EventListModel::resizeEvent(int id, const QDateTime& newEnd) {
 }
 
 void EventListModel::removeEvent(int id) {
-    if (m_repo->remove(id)) reload();
+    // Capture full state for undo-of-delete.
+    Event captured;
+    bool found = false;
+    for (const Event& cur : m_events) {
+        if (cur.id == id) { captured = cur; found = true; break; }
+    }
+    if (!m_repo->remove(id)) return;
+
+    if (found && m_undoService) {
+        // The re-inserted row gets a fresh autoincrement id; track it via
+        // shared_ptr so redo can delete the right row across cycles.
+        auto sharedId = std::make_shared<int>(id);
+        auto repo = m_repo;
+        auto self = this;
+        m_undoService->push("Delete \"" + captured.title + "\"",
+            // undo: re-insert with captured payload (fresh id)
+            [repo, self, captured, sharedId]() mutable {
+                Event re = captured;
+                re.id = 0;
+                int newId = repo->insert(re);
+                if (newId > 0) *sharedId = newId;
+                self->reload();
+            },
+            // redo: delete whatever id is current
+            [repo, self, sharedId]() {
+                repo->remove(*sharedId);
+                self->reload();
+            });
+    }
+    reload();
 }
 
 int EventListModel::allDayPositionOf(int eventId) const {

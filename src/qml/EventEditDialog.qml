@@ -12,8 +12,10 @@ Dialog {
     title: editingId > 0 ? "Edit event" : "New event"
 
     property int editingId: 0
+    property int evCalendarId: 1
     signal saved(int id, string evTitle, date start, date end, string category,
-                 string rrule, bool allDay, string notes, string location, int reminderMinutes)
+                 string rrule, bool allDay, string notes, string location, int reminderMinutes,
+                 int calendarId)
     signal removed(int id)
 
     function openFor(args) {
@@ -27,6 +29,7 @@ Dialog {
         locationField.text = args.location || "";
         allDayToggle.checked = args.allDay || false;
         rruleEditor.rrule = args.rrule || "";
+        evCalendarId = args.calendarId || 1;
         // map reminder minutes back to combo index
         var r = args.reminderMinutes || 0;
         var idx = ({ 0:0, 5:1, 15:2, 30:3, 60:4, 1440:5 })[r];
@@ -72,7 +75,8 @@ Dialog {
         saved(editingId, titleField.text.trim(), s, e,
               categoryField.text.trim(), rruleEditor.rrule,
               allDayToggle.checked, notesArea.text.trim(),
-              locationField.text.trim(), _reminderValues[reminderCombo.currentIndex]);
+              locationField.text.trim(), _reminderValues[reminderCombo.currentIndex],
+              evCalendarId);
         close();
     }
 
@@ -220,6 +224,75 @@ Dialog {
                     color: Theme.fg
                     Keys.onReturnPressed: dialog._commit()
                     Keys.onEnterPressed: dialog._commit()
+                }
+            }
+
+            // calendar picker
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.leftMargin: Theme.sp6
+                Layout.rightMargin: Theme.sp6
+                spacing: Theme.sp2
+
+                Text {
+                    text: "calendar_today"
+                    font.family: Theme.iconFont
+                    font.pixelSize: 18
+                    color: Theme.fgSubtle
+                }
+                Text {
+                    text: "Calendar"
+                    color: Theme.fgMuted
+                    font.family: Theme.sansStack[0]
+                    font.pixelSize: Theme.textBody
+                    Layout.preferredWidth: 70
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 4
+                    Repeater {
+                        model: CalendarModel
+                        delegate: Rectangle {
+                            id: calChip
+                            required property int id
+                            required property string name
+                            required property string color
+                            readonly property bool selected: dialog.evCalendarId === id
+
+                            implicitHeight: 26
+                            implicitWidth: chipText.implicitWidth + 32
+                            radius: Theme.radiusPill
+                            color: selected ? Qt.alpha(calChip.color, 0.30) : Theme.surfaceHigh
+                            border.color: selected ? calChip.color : "transparent"
+                            border.width: 1
+
+                            Row {
+                                anchors.left: parent.left
+                                anchors.leftMargin: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 6
+                                Rectangle {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 10; height: 10; radius: 5
+                                    color: calChip.color
+                                }
+                                Text {
+                                    id: chipText
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: calChip.name
+                                    color: Theme.fg
+                                    font.family: Theme.sansStack[0]
+                                    font.pixelSize: Theme.textCaption + 1
+                                    font.weight: Theme.weightMedium
+                                }
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: dialog.evCalendarId = calChip.id
+                            }
+                        }
+                    }
                 }
             }
 
