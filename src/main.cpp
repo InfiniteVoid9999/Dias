@@ -1,6 +1,7 @@
 #include "core/Database.h"
 #include "core/EventRepository.h"
 #include "core/ExportService.h"
+#include "core/GCalSync.h"
 #include "core/ObsidianIngest.h"
 #include "core/TaskRepository.h"
 #include "ui/EventListModel.h"
@@ -66,6 +67,7 @@ int main(int argc, char* argv[]) {
 
     dias::ExportService exporter(&eventRepo, &taskRepo);
     dias::ObsidianIngest obsidian(&eventRepo, &taskRepo, db.handle());
+    dias::GCalSync gcal(&eventRepo, db.handle());
 
     if (smoke) {
         std::fprintf(stderr, "[dias] smoke ok (%d events, %d tasks)\n",
@@ -90,6 +92,7 @@ int main(int argc, char* argv[]) {
     engine.rootContext()->setContextProperty("TaskModel",  &taskModel);
     engine.rootContext()->setContextProperty("Exporter",   &exporter);
     engine.rootContext()->setContextProperty("Obsidian",   &obsidian);
+    engine.rootContext()->setContextProperty("GCal",       &gcal);
     engine.loadFromModule("Dias", "Main");
     if (engine.rootObjects().isEmpty()) {
         std::fprintf(stderr, "[dias] root objects empty -- QML load failed\n");

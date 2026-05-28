@@ -8,7 +8,14 @@ Item {
     id: root
 
     signal addRequested()
-    signal editRequested(int id, string taskText, date due, bool hasDue)
+    signal editRequested(int id, string taskText, date due, bool hasDue, int priority)
+
+    readonly property var _priorityColors: [
+        "transparent",
+        Theme.success,
+        Theme.warning,
+        Theme.error
+    ]
 
     ColumnLayout {
         anchors.fill: parent
@@ -71,6 +78,7 @@ Item {
                 required property var due
                 required property bool hasDue
                 required property bool done
+                required property int priority
 
                 Rectangle {
                     anchors.fill: parent
@@ -85,6 +93,14 @@ Item {
                     anchors.leftMargin: Theme.sp1
                     anchors.rightMargin: Theme.sp2
                     spacing: Theme.sp2
+
+                    // priority dot (4px circle) — invisible if priority=0
+                    Rectangle {
+                        Layout.preferredWidth: 4
+                        Layout.preferredHeight: 16
+                        radius: 2
+                        color: root._priorityColors[Math.max(0, Math.min(3, rowItem.priority))]
+                    }
 
                     CheckBox {
                         checked: rowItem.done
@@ -133,7 +149,7 @@ Item {
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.editRequested(rowItem.id, rowItem.text, rowItem.due, rowItem.hasDue)
+                            onClicked: root.editRequested(rowItem.id, rowItem.text, rowItem.due, rowItem.hasDue, rowItem.priority)
                         }
                     }
                 }

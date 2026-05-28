@@ -12,6 +12,8 @@ struct Task {
     bool done = false;
     QString source = "local";
     QString lastEditedBy = "local";
+    int priority = 0;       // 0=none, 1=low, 2=med, 3=high
+    QString status = "open"; // open | in_progress | blocked | done
     qint64 updatedAt = 0;
 };
 

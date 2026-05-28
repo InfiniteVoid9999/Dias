@@ -14,7 +14,7 @@ Item {
 
     signal createAt(date day, int hour)
     signal editEvent(int id, string evTitle, date start, date end, string category, string rrule)
-    signal editTask(int id, string taskText, date due, bool hasDue)
+    signal editTask(int id, string taskText, date due, bool hasDue, int priority)
 
     // ---- date helpers ----
     function _localMidnight(d) { var x = new Date(d); x.setHours(0,0,0,0); return x; }
@@ -305,6 +305,7 @@ Item {
                     required property bool hasDue
                     required property bool done
                     required property bool agentRecent
+                    required property int priority
 
                     readonly property int col: hasDue ? root._dayIndex(due) : -1
                     readonly property real startHours: hasDue ? (due.getHours() + due.getMinutes() / 60) : 0
@@ -354,7 +355,7 @@ Item {
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.editTask(pill.id, pill.text, pill.due, pill.hasDue)
+                            onClicked: root.editTask(pill.id, pill.text, pill.due, pill.hasDue, pill.priority)
                         }
 
                         // agent-edit pulse

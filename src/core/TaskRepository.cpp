@@ -21,8 +21,8 @@ TaskRepository::TaskRepository(QSqlDatabase db) : m_db(std::move(db)) {}
 int TaskRepository::insert(const Task& t) {
     QSqlQuery q(m_db);
     q.prepare(R"(
-        INSERT INTO tasks (text, due_ts, done, source, last_edited_by, created_at, updated_at)
-        VALUES (:text, :due, :done, :source, :leb, :ts, :ts)
+        INSERT INTO tasks (text, due_ts, done, source, last_edited_by, priority, status, created_at, updated_at)
+        VALUES (:text, :due, :done, :source, :leb, :prio, :status, :ts, :ts)
     )");
     const qint64 ts = nowSec();
     q.bindValue(":text",   t.text);
@@ -30,6 +30,8 @@ int TaskRepository::insert(const Task& t) {
     q.bindValue(":done",   t.done ? 1 : 0);
     q.bindValue(":source", t.source.isEmpty() ? "local" : t.source);
     q.bindValue(":leb",    t.lastEditedBy.isEmpty() ? t.source : t.lastEditedBy);
+    q.bindValue(":prio",   t.priority);
+    q.bindValue(":status", t.status.isEmpty() ? "open" : t.status);
     q.bindValue(":ts",     ts);
     if (!q.exec()) {
         qWarning() << "Task insert failed:" << q.lastError().text();
@@ -46,15 +48,19 @@ bool TaskRepository::update(const Task& t) {
             due_ts = :due,
             done = :done,
             last_edited_by = :leb,
+            priority = :prio,
+            status = :status,
             updated_at = :ts
         WHERE id = :id
     )");
-    q.bindValue(":text", t.text);
-    q.bindValue(":due",  dueOrNull(t.due));
-    q.bindValue(":done", t.done ? 1 : 0);
-    q.bindValue(":leb",  t.lastEditedBy.isEmpty() ? "local" : t.lastEditedBy);
-    q.bindValue(":ts",   nowSec());
-    q.bindValue(":id",   t.id);
+    q.bindValue(":text",   t.text);
+    q.bindValue(":due",    dueOrNull(t.due));
+    q.bindValue(":done",   t.done ? 1 : 0);
+    q.bindValue(":leb",    t.lastEditedBy.isEmpty() ? "local" : t.lastEditedBy);
+    q.bindValue(":prio",   t.priority);
+    q.bindValue(":status", t.status.isEmpty() ? "open" : t.status);
+    q.bindValue(":ts",     nowSec());
+    q.bindValue(":id",     t.id);
     if (!q.exec()) {
         qWarning() << "Task update failed:" << q.lastError().text();
         return false;
@@ -89,9 +95,10 @@ bool TaskRepository::setDone(int id, bool done) {
 QVector<Task> TaskRepository::all() const {
     QSqlQuery q(m_db);
     q.prepare(R"(
-        SELECT id, text, due_ts, done, source, last_edited_by, updated_at
+        SELECT id, text, due_ts, done, source, last_edited_by, priority, status, updated_at
         FROM tasks
         ORDER BY done ASC,
+                 priority DESC,
                  CASE WHEN due_ts IS NULL THEN 1 ELSE 0 END,
                  due_ts ASC,
                  created_at ASC
@@ -111,7 +118,9 @@ QVector<Task> TaskRepository::all() const {
         t.done         = q.value(3).toInt() != 0;
         t.source       = q.value(4).toString();
         t.lastEditedBy = q.value(5).toString();
-        t.updatedAt    = q.value(6).toLongLong();
+        t.priority     = q.value(6).toInt();
+        t.status       = q.value(7).toString();
+        t.updatedAt    = q.value(8).toLongLong();
         out.push_back(std::move(t));
     }
     return out;

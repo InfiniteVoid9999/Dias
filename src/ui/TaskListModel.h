@@ -24,6 +24,8 @@ public:
         DoneRole,
         SourceRole,
         AgentRecentRole,
+        PriorityRole,
+        StatusRole,
     };
 
     explicit TaskListModel(TaskRepository* repo, QObject* parent = nullptr);
@@ -33,10 +35,11 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     Q_INVOKABLE void reload();
-    Q_INVOKABLE void createTask(const QString& text, const QDateTime& due);
-    Q_INVOKABLE void updateTask(int id, const QString& text, const QDateTime& due);
+    Q_INVOKABLE void createTask(const QString& text, const QDateTime& due, int priority = 0);
+    Q_INVOKABLE void updateTask(int id, const QString& text, const QDateTime& due, int priority = 0);
     Q_INVOKABLE void removeTask(int id);
     Q_INVOKABLE void setDone(int id, bool done);
+    Q_INVOKABLE void setPriority(int id, int priority);
 
     Q_INVOKABLE void startPolling(int intervalMs);
     Q_INVOKABLE void stopPolling();

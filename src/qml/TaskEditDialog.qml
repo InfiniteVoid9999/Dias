@@ -12,13 +12,15 @@ Dialog {
     title: editingId > 0 ? "Edit task" : "New task"
 
     property int editingId: 0
-    signal saved(int id, string text, date due, bool hasDue)
+    property int evPriority: 0
+    signal saved(int id, string text, date due, bool hasDue, int priority)
     signal removed(int id)
 
-    function openFor(id, text, due, hasDue) {
+    function openFor(id, text, due, hasDue, priority) {
         editingId = id;
         textField.text = text;
         dueField.text = hasDue ? Qt.formatDateTime(due, "yyyy-MM-dd HH:mm") : "";
+        evPriority = priority || 0;
         open();
         Qt.callLater(function() {
             textField.forceActiveFocus();
@@ -41,9 +43,17 @@ Dialog {
         if (!saveBtn.enabled) return;
         var hasDue = dueField.text !== "";
         var d = hasDue ? _parse(dueField.text) : new Date();
-        saved(editingId, textField.text.trim(), d, hasDue);
+        saved(editingId, textField.text.trim(), d, hasDue, evPriority);
         close();
     }
+
+    readonly property var _priorityColors: [
+        Theme.fgSubtle,        // 0 none
+        Theme.success,         // 1 low
+        Theme.warning,         // 2 med
+        Theme.error            // 3 high
+    ]
+    readonly property var _priorityLabels: ["None", "Low", "Med", "High"]
 
     background: Rectangle {
         color: Theme.surface
@@ -95,6 +105,53 @@ Dialog {
             color: dialog._dueValid() ? Theme.fg : Theme.error
             Keys.onReturnPressed: dialog._commit()
             Keys.onEnterPressed: dialog._commit()
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.sp6
+            Layout.rightMargin: Theme.sp6
+            spacing: Theme.sp2
+
+            Text {
+                text: "Priority"
+                color: Theme.fgMuted
+                font.family: Theme.sansStack[0]
+                font.pixelSize: Theme.textBody
+                Layout.preferredWidth: 70
+            }
+            Repeater {
+                model: 4
+                delegate: Rectangle {
+                    required property int index
+                    Layout.preferredHeight: 30
+                    Layout.preferredWidth: 64
+                    radius: Theme.radiusPill
+                    color: dialog.evPriority === index
+                           ? dialog._priorityColors[index]
+                           : Theme.surfaceHigh
+                    border.color: dialog.evPriority === index
+                                  ? "transparent"
+                                  : Theme.border
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: dialog._priorityLabels[parent.index]
+                        font.family: Theme.sansStack[0]
+                        font.pixelSize: Theme.textCaption
+                        font.weight: Theme.weightMedium
+                        color: dialog.evPriority === parent.index
+                               ? Theme.onAccent
+                               : Theme.fgMuted
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: dialog.evPriority = parent.index
+                    }
+                }
+            }
+            Item { Layout.fillWidth: true }
         }
 
         Item { Layout.preferredHeight: Theme.sp1 }

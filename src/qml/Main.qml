@@ -40,12 +40,17 @@ ApplicationWindow {
         enabled: !editDialog.visible && !taskDialog.visible && !statusPopup.visible
         onActivated: Qt.quit()
     }
-    Shortcut { sequences: ["Right", "L"]; enabled: !editDialog.visible && !taskDialog.visible; onActivated: weekView.next() }
-    Shortcut { sequences: ["Left",  "H"]; enabled: !editDialog.visible && !taskDialog.visible; onActivated: weekView.prev() }
-    Shortcut { sequences: ["T"];          enabled: !editDialog.visible && !taskDialog.visible; onActivated: weekView.gotoToday() }
+    Shortcut { sequences: ["Right", "L"]; enabled: !editDialog.visible && !taskDialog.visible; onActivated: currentView().next() }
+    Shortcut { sequences: ["Left",  "H"]; enabled: !editDialog.visible && !taskDialog.visible; onActivated: currentView().prev() }
+    Shortcut { sequences: ["T"];          enabled: !editDialog.visible && !taskDialog.visible; onActivated: currentView().gotoToday() }
     Shortcut { sequences: ["D"];          enabled: !editDialog.visible && !taskDialog.visible; onActivated: setDayView() }
     Shortcut { sequences: ["W"];          enabled: !editDialog.visible && !taskDialog.visible; onActivated: setWeekView() }
+    Shortcut { sequences: ["M"];          enabled: !editDialog.visible && !taskDialog.visible; onActivated: setMonthView() }
     Shortcut { sequences: ["Ctrl+E"];     enabled: !editDialog.visible && !taskDialog.visible; onActivated: doExport() }
+
+    function currentView() {
+        return viewLoader.item;
+    }
 
     // -------- view helpers --------
     function _localMidnight(d) { var x = new Date(d); x.setHours(0,0,0,0); return x; }
@@ -55,15 +60,39 @@ ApplicationWindow {
         x.setDate(x.getDate() - dow);
         return x;
     }
+    // viewMode tracks the current pane (week/day/month). It's derived from
+    // EventModel.viewDays + a bool here because viewDays alone can't
+    // distinguish "week of 7 days" from "first week of a 42-day month grid".
+    property string viewMode: "week"
+
+    function _firstMondayOfMonthGrid(anyDateInMonth) {
+        var first = new Date(anyDateInMonth.getFullYear(), anyDateInMonth.getMonth(), 1);
+        var dow = (first.getDay() + 6) % 7;
+        var monday = new Date(first);
+        monday.setDate(first.getDate() - dow);
+        monday.setHours(0, 0, 0, 0);
+        return monday;
+    }
+
     function setDayView() {
-        var anchor = EventModel.viewDays === 7 ? _localMidnight(new Date()) : EventModel.viewStart;
+        var anchor = viewMode === "week" ? _localMidnight(new Date())
+                   : viewMode === "month" ? _localMidnight(new Date())
+                   : EventModel.viewStart;
+        viewMode = "day";
         EventModel.viewStart = anchor;
         EventModel.viewDays = 1;
     }
     function setWeekView() {
-        var anchor = _mondayOf(EventModel.viewDays === 1 ? EventModel.viewStart : new Date());
+        var anchor = viewMode === "day" ? _mondayOf(EventModel.viewStart) : _mondayOf(new Date());
+        viewMode = "week";
         EventModel.viewStart = anchor;
         EventModel.viewDays = 7;
+    }
+    function setMonthView() {
+        var seed = (viewMode === "day" || viewMode === "week") ? EventModel.viewStart : new Date();
+        viewMode = "month";
+        EventModel.viewStart = _firstMondayOfMonthGrid(seed);
+        EventModel.viewDays = 42;
     }
     function doExport() {
         var msg = Exporter.exportTo(Exporter.defaultDir());
@@ -79,6 +108,16 @@ ApplicationWindow {
             EventModel.reload();
         } else {
             statusPopup.show("Obsidian sync failed: " + r.error);
+        }
+    }
+    function doGCalSync() {
+        var r = GCal.ingest();
+        if (r.ok) {
+            statusPopup.show("GCal: " + r.imported + " imported, "
+                             + r.updated + " updated, " + r.skipped + " skipped");
+            EventModel.reload();
+        } else {
+            statusPopup.show(r.error);
         }
     }
 
@@ -112,7 +151,15 @@ ApplicationWindow {
                 spacing: Theme.sp1
 
                 Text {
-                    text: Qt.formatDate(weekView.viewStart, "MMMM yyyy")
+                    text: {
+                        // For month view, derive month from a date safely inside the grid.
+                        if (root.viewMode === "month") {
+                            var d = new Date(EventModel.viewStart);
+                            d.setDate(d.getDate() + 14);
+                            return Qt.formatDate(d, "MMMM yyyy");
+                        }
+                        return Qt.formatDate(EventModel.viewStart, "MMMM yyyy");
+                    }
                     font.family: Theme.sansStack[0]
                     font.pixelSize: Theme.textDisplay
                     font.weight: Theme.weightBold
@@ -120,9 +167,10 @@ ApplicationWindow {
                 }
                 Text {
                     text: {
-                        var s = weekView.viewStart;
-                        if (weekView.dayCount === 1) return Qt.formatDate(s, "dddd, d MMM");
-                        var e = new Date(s); e.setDate(e.getDate() + weekView.dayCount - 1);
+                        var s = EventModel.viewStart;
+                        if (root.viewMode === "day")  return Qt.formatDate(s, "dddd, d MMM");
+                        if (root.viewMode === "month") return "";
+                        var e = new Date(s); e.setDate(e.getDate() + 6);
                         return Qt.formatDate(s, "d MMM") + " – " + Qt.formatDate(e, "d MMM");
                     }
                     font.family: Theme.sansStack[0]
@@ -138,67 +186,61 @@ ApplicationWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: Theme.sp1
 
-                // segmented view toggle
+                // segmented view toggle (3-way: Day / Week / Month)
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     height: 36
-                    width: 124
+                    width: 180
                     radius: Theme.radiusPill
                     color: Theme.surface
 
-                    Row {
-                        anchors.fill: parent
-                        anchors.margins: 3
+                    property real segWidth: (width - 6) / 3
 
-                        Rectangle {
-                            id: segHighlight
-                            width: parent.width / 2
-                            height: parent.height
-                            radius: Theme.radiusPill
-                            color: Theme.accent
-                            x: weekView.dayCount === 1 ? 0 : parent.width / 2
-                            Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-                        }
+                    Rectangle {
+                        id: segHighlight
+                        width: parent.segWidth
+                        height: parent.height - 6
+                        y: 3
+                        radius: Theme.radiusPill
+                        color: Theme.accent
+                        x: root.viewMode === "day"   ? 3
+                          : root.viewMode === "week" ? 3 + parent.segWidth
+                                                     : 3 + 2 * parent.segWidth
+                        Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
                     }
 
                     Row {
                         anchors.fill: parent
                         anchors.margins: 3
 
-                        Item {
-                            width: parent.width / 2
-                            height: parent.height
-                            Text {
-                                anchors.centerIn: parent
-                                text: "Day"
-                                font.family: Theme.sansStack[0]
-                                font.pixelSize: Theme.textBody
-                                font.weight: Theme.weightMedium
-                                color: weekView.dayCount === 1 ? Theme.onAccent : Theme.fgMuted
-                                Behavior on color { ColorAnimation { duration: 150 } }
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: setDayView()
-                            }
-                        }
-                        Item {
-                            width: parent.width / 2
-                            height: parent.height
-                            Text {
-                                anchors.centerIn: parent
-                                text: "Week"
-                                font.family: Theme.sansStack[0]
-                                font.pixelSize: Theme.textBody
-                                font.weight: Theme.weightMedium
-                                color: weekView.dayCount === 7 ? Theme.onAccent : Theme.fgMuted
-                                Behavior on color { ColorAnimation { duration: 150 } }
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: setWeekView()
+                        Repeater {
+                            model: [
+                                { mode: "day",   label: "Day"   },
+                                { mode: "week",  label: "Week"  },
+                                { mode: "month", label: "Month" }
+                            ]
+                            delegate: Item {
+                                required property var modelData
+                                width: parent.width / 3
+                                height: parent.height
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: modelData.label
+                                    font.family: Theme.sansStack[0]
+                                    font.pixelSize: Theme.textBody
+                                    font.weight: Theme.weightMedium
+                                    color: root.viewMode === modelData.mode ? Theme.onAccent : Theme.fgMuted
+                                    Behavior on color { ColorAnimation { duration: 150 } }
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (modelData.mode === "day")   setDayView();
+                                        else if (modelData.mode === "week")  setWeekView();
+                                        else if (modelData.mode === "month") setMonthView();
+                                    }
+                                }
                             }
                         }
                     }
@@ -210,7 +252,7 @@ ApplicationWindow {
                 IconBtn {
                     glyph: "chevron_left"
                     ToolTip.text: "Previous (H / ←)"
-                    onClicked: weekView.prev()
+                    onClicked: currentView().prev()
                 }
                 ToolButton {
                     text: "Today"
@@ -221,12 +263,12 @@ ApplicationWindow {
                     ToolTip.visible: hovered
                     ToolTip.delay: 600
                     ToolTip.text: "Today (T)"
-                    onClicked: weekView.gotoToday()
+                    onClicked: currentView().gotoToday()
                 }
                 IconBtn {
                     glyph: "chevron_right"
                     ToolTip.text: "Next (L / →)"
-                    onClicked: weekView.next()
+                    onClicked: currentView().next()
                 }
 
                 Item { width: Theme.sp3; height: 1 }
@@ -244,6 +286,14 @@ ApplicationWindow {
                     glyph: "hub"
                     ToolTip.text: "Sync from Obsidian vault"
                     onClicked: doObsidianSync()
+                }
+                IconBtn {
+                    glyph: "event_available"
+                    ToolTip.text: GCal.isConfigured()
+                                  ? "Sync from Google Calendar"
+                                  : "Google Calendar (needs setup)"
+                    emphasized: !GCal.isConfigured()
+                    onClicked: doGCalSync()
                 }
                 IconBtn {
                     glyph: "file_download"
@@ -264,23 +314,43 @@ ApplicationWindow {
             Layout.fillHeight: true
             spacing: 0
 
-            WeekView {
-                id: weekView
+            Loader {
+                id: viewLoader
                 Layout.fillHeight: true
                 Layout.fillWidth: true
+                sourceComponent: root.viewMode === "month" ? monthComp : weekComp
+            }
 
-                onCreateAt: function(day, hour) {
-                    var s = new Date(day);
-                    s.setHours(hour, 0, 0, 0);
-                    var e = new Date(s);
-                    e.setHours(s.getHours() + 1);
-                    editDialog.openFor(0, "", s, e, "", "");
+            Component {
+                id: weekComp
+                WeekView {
+                    onCreateAt: function(day, hour) {
+                        var s = new Date(day);
+                        s.setHours(hour, 0, 0, 0);
+                        var e = new Date(s);
+                        e.setHours(s.getHours() + 1);
+                        editDialog.openFor(0, "", s, e, "", "");
+                    }
+                    onEditEvent: function(id, evTitle, start, end, category, rrule) {
+                        editDialog.openFor(id, evTitle, start, end, category, rrule);
+                    }
+                    onEditTask: function(id, taskText, due, hasDue, priority) {
+                        taskDialog.openFor(id, taskText, due, hasDue, priority);
+                    }
                 }
-                onEditEvent: function(id, evTitle, start, end, category, rrule) {
-                    editDialog.openFor(id, evTitle, start, end, category, rrule);
-                }
-                onEditTask: function(id, taskText, due, hasDue) {
-                    taskDialog.openFor(id, taskText, due, hasDue);
+            }
+
+            Component {
+                id: monthComp
+                MonthView {
+                    onEditEvent: function(id, evTitle, start, end, category, rrule) {
+                        editDialog.openFor(id, evTitle, start, end, category, rrule);
+                    }
+                    onSelectDay: function(day) {
+                        EventModel.viewStart = day;
+                        EventModel.viewDays = 1;
+                        root.viewMode = "day";
+                    }
                 }
             }
 
@@ -299,10 +369,10 @@ ApplicationWindow {
                     var now = new Date();
                     now.setMinutes(0, 0, 0);
                     now.setHours(now.getHours() + 1);
-                    taskDialog.openFor(0, "", now, false);
+                    taskDialog.openFor(0, "", now, false, 0);
                 }
-                onEditRequested: function(id, taskText, due, hasDue) {
-                    taskDialog.openFor(id, taskText, due, hasDue);
+                onEditRequested: function(id, taskText, due, hasDue, priority) {
+                    taskDialog.openFor(id, taskText, due, hasDue, priority);
                 }
             }
         }
@@ -323,10 +393,10 @@ ApplicationWindow {
         id: taskDialog
         anchors.centerIn: parent
 
-        onSaved: function(id, taskText, due, hasDue) {
+        onSaved: function(id, taskText, due, hasDue, priority) {
             var d = hasDue ? due : new Date(NaN);
-            if (id <= 0) TaskModel.createTask(taskText, d);
-            else         TaskModel.updateTask(id, taskText, d);
+            if (id <= 0) TaskModel.createTask(taskText, d, priority);
+            else         TaskModel.updateTask(id, taskText, d, priority);
         }
         onRemoved: function(id) { TaskModel.removeTask(id); }
     }

@@ -26,6 +26,8 @@ QVariant TaskListModel::data(const QModelIndex& index, int role) const {
         case DoneRole:        return t.done;
         case SourceRole:      return t.source;
         case AgentRecentRole: return m_recentAgentIds.contains(t.id);
+        case PriorityRole:    return t.priority;
+        case StatusRole:      return t.status;
     }
     return {};
 }
@@ -39,6 +41,8 @@ QHash<int, QByteArray> TaskListModel::roleNames() const {
         {DoneRole,        "done"},
         {SourceRole,      "source"},
         {AgentRecentRole, "agentRecent"},
+        {PriorityRole,    "priority"},
+        {StatusRole,      "status"},
     };
 }
 
@@ -64,20 +68,22 @@ void TaskListModel::reload() {
     if (sawAgentEdit) emit agentEditDetected();
 }
 
-void TaskListModel::createTask(const QString& text, const QDateTime& due) {
+void TaskListModel::createTask(const QString& text, const QDateTime& due, int priority) {
     Task t;
-    t.text = text;
-    t.due  = due;
+    t.text     = text;
+    t.due      = due;
+    t.priority = priority;
     if (m_repo->insert(t) > 0) reload();
 }
 
-void TaskListModel::updateTask(int id, const QString& text, const QDateTime& due) {
+void TaskListModel::updateTask(int id, const QString& text, const QDateTime& due, int priority) {
     Task t;
-    t.id = id;
-    t.text = text;
-    t.due  = due;
+    t.id       = id;
+    t.text     = text;
+    t.due      = due;
+    t.priority = priority;
     for (const Task& cur : m_tasks) {
-        if (cur.id == id) { t.done = cur.done; break; }
+        if (cur.id == id) { t.done = cur.done; t.status = cur.status; break; }
     }
     if (m_repo->update(t)) reload();
 }
@@ -88,6 +94,16 @@ void TaskListModel::removeTask(int id) {
 
 void TaskListModel::setDone(int id, bool done) {
     if (m_repo->setDone(id, done)) reload();
+}
+
+void TaskListModel::setPriority(int id, int priority) {
+    for (Task t : m_tasks) {
+        if (t.id == id) {
+            t.priority = priority;
+            if (m_repo->update(t)) reload();
+            return;
+        }
+    }
 }
 
 void TaskListModel::startPolling(int intervalMs) {

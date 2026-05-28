@@ -29,6 +29,8 @@ add_library(dias-core STATIC
     src/core/EventRepository.h
     src/core/ExportService.cpp
     src/core/ExportService.h
+    src/core/GCalSync.cpp
+    src/core/GCalSync.h
     src/core/ObsidianIngest.cpp
     src/core/ObsidianIngest.h
     src/core/RRule.cpp
