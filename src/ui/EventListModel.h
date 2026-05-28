@@ -28,6 +28,7 @@ public:
         SourceRole,
         AgentRecentRole,
         LastEditedByRole,
+        RruleRole,
     };
 
     explicit EventListModel(EventRepository* repo, QObject* parent = nullptr);
@@ -42,10 +43,13 @@ public:
     int viewDays() const { return m_viewDays; }
     void setViewDays(int n);
 
+    Q_INVOKABLE void reload();
     Q_INVOKABLE void createEvent(const QString& title, const QDateTime& start,
-                                 const QDateTime& end, const QString& category);
+                                 const QDateTime& end, const QString& category,
+                                 const QString& rrule = {});
     Q_INVOKABLE void updateEvent(int id, const QString& title, const QDateTime& start,
-                                 const QDateTime& end, const QString& category);
+                                 const QDateTime& end, const QString& category,
+                                 const QString& rrule = {});
     Q_INVOKABLE void removeEvent(int id);
 
     // Polling: refresh from DB every interval; emits agentEditDetected when
@@ -59,8 +63,6 @@ signals:
     void agentEditDetected();
 
 private:
-    void reload();
-
     EventRepository* m_repo;
     QDateTime m_viewStart;
     int m_viewDays = 7;

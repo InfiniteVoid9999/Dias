@@ -29,6 +29,7 @@ QVariant EventListModel::data(const QModelIndex& index, int role) const {
         case SourceRole:       return e.source;
         case LastEditedByRole: return e.lastEditedBy;
         case AgentRecentRole:  return m_recentAgentIds.contains(e.id);
+        case RruleRole:        return e.rrule;
     }
     return {};
 }
@@ -44,6 +45,7 @@ QHash<int, QByteArray> EventListModel::roleNames() const {
         {SourceRole,       "source"},
         {LastEditedByRole, "lastEditedBy"},
         {AgentRecentRole,  "agentRecent"},
+        {RruleRole,        "rrule"},
     };
 }
 
@@ -65,7 +67,8 @@ void EventListModel::setViewDays(int n) {
 void EventListModel::reload() {
     if (!m_viewStart.isValid()) return;
 
-    QVector<Event> fresh = m_repo->inRange(m_viewStart, m_viewStart.addDays(m_viewDays));
+    // expandedInRange returns RRULE-expanded instances for the visible window.
+    QVector<Event> fresh = m_repo->expandedInRange(m_viewStart, m_viewStart.addDays(m_viewDays));
 
     // Detect agent edits since last reload — these get a transient pulse.
     QHash<int, qint64> newRecent;
@@ -88,23 +91,27 @@ void EventListModel::reload() {
 }
 
 void EventListModel::createEvent(const QString& title, const QDateTime& start,
-                                 const QDateTime& end, const QString& category) {
+                                 const QDateTime& end, const QString& category,
+                                 const QString& rrule) {
     Event e;
-    e.title = title;
-    e.start = start;
-    e.end = end;
+    e.title    = title;
+    e.start    = start;
+    e.end      = end;
     e.category = category;
+    e.rrule    = rrule;
     if (m_repo->insert(e) > 0) reload();
 }
 
 void EventListModel::updateEvent(int id, const QString& title, const QDateTime& start,
-                                 const QDateTime& end, const QString& category) {
+                                 const QDateTime& end, const QString& category,
+                                 const QString& rrule) {
     Event e;
-    e.id = id;
-    e.title = title;
-    e.start = start;
-    e.end = end;
+    e.id       = id;
+    e.title    = title;
+    e.start    = start;
+    e.end      = end;
     e.category = category;
+    e.rrule    = rrule;
     if (m_repo->update(e)) reload();
 }
 

@@ -71,6 +71,16 @@ ApplicationWindow {
             ? "Exported to " + Exporter.defaultDir()
             : "Export failed: " + msg);
     }
+    function doObsidianSync() {
+        var r = Obsidian.ingest(Obsidian.defaultVaultPath());
+        if (r.ok) {
+            statusPopup.show("Obsidian: " + r.imported + " imported, "
+                             + r.updated + " updated, " + r.skipped + " skipped");
+            EventModel.reload();
+        } else {
+            statusPopup.show("Obsidian sync failed: " + r.error);
+        }
+    }
 
     // -------- helper: icon button (Material Symbols, ligature-based) --------
     component IconBtn: ToolButton {
@@ -231,6 +241,11 @@ ApplicationWindow {
                     onClicked: root.userTheme = (root.userTheme + 1) % 3
                 }
                 IconBtn {
+                    glyph: "hub"
+                    ToolTip.text: "Sync from Obsidian vault"
+                    onClicked: doObsidianSync()
+                }
+                IconBtn {
                     glyph: "file_download"
                     ToolTip.text: "Export (Ctrl+E)"
                     onClicked: doExport()
@@ -259,10 +274,10 @@ ApplicationWindow {
                     s.setHours(hour, 0, 0, 0);
                     var e = new Date(s);
                     e.setHours(s.getHours() + 1);
-                    editDialog.openFor(0, "", s, e, "");
+                    editDialog.openFor(0, "", s, e, "", "");
                 }
-                onEditEvent: function(id, evTitle, start, end, category) {
-                    editDialog.openFor(id, evTitle, start, end, category);
+                onEditEvent: function(id, evTitle, start, end, category, rrule) {
+                    editDialog.openFor(id, evTitle, start, end, category, rrule);
                 }
                 onEditTask: function(id, taskText, due, hasDue) {
                     taskDialog.openFor(id, taskText, due, hasDue);
@@ -297,9 +312,9 @@ ApplicationWindow {
         id: editDialog
         anchors.centerIn: parent
 
-        onSaved: function(id, evTitle, start, end, category) {
-            if (id <= 0) EventModel.createEvent(evTitle, start, end, category);
-            else         EventModel.updateEvent(id, evTitle, start, end, category);
+        onSaved: function(id, evTitle, start, end, category, rrule) {
+            if (id <= 0) EventModel.createEvent(evTitle, start, end, category, rrule);
+            else         EventModel.updateEvent(id, evTitle, start, end, category, rrule);
         }
         onRemoved: function(id) { EventModel.removeEvent(id); }
     }

@@ -1,8 +1,11 @@
 #include "EventRepository.h"
+#include "RRule.h"
 
 #include <QDebug>
 #include <QtSql/QSqlError>
 #include <QtSql/QSqlQuery>
+
+#include <algorithm>
 
 namespace dias {
 
@@ -85,6 +88,26 @@ bool EventRepository::remove(int id) {
     return q.numRowsAffected() > 0;
 }
 
+namespace {
+
+Event rowToEvent(QSqlQuery& q) {
+    Event e;
+    e.id           = q.value(0).toInt();
+    e.title        = q.value(1).toString();
+    e.start        = QDateTime::fromSecsSinceEpoch(q.value(2).toLongLong());
+    e.end          = QDateTime::fromSecsSinceEpoch(q.value(3).toLongLong());
+    e.allDay       = q.value(4).toInt() != 0;
+    e.category     = q.value(5).toString();
+    e.source       = q.value(6).toString();
+    e.createdBy    = q.value(7).toString();
+    e.lastEditedBy = q.value(8).toString();
+    e.rrule        = q.value(9).toString();
+    e.updatedAt    = q.value(10).toLongLong();
+    return e;
+}
+
+} // namespace
+
 QVector<Event> EventRepository::inRange(const QDateTime& from, const QDateTime& to) const {
     QSqlQuery q(m_db);
     q.prepare(R"(
@@ -102,21 +125,69 @@ QVector<Event> EventRepository::inRange(const QDateTime& from, const QDateTime& 
         qWarning() << "Event range query failed:" << q.lastError().text();
         return out;
     }
-    while (q.next()) {
-        Event e;
-        e.id           = q.value(0).toInt();
-        e.title        = q.value(1).toString();
-        e.start        = QDateTime::fromSecsSinceEpoch(q.value(2).toLongLong());
-        e.end          = QDateTime::fromSecsSinceEpoch(q.value(3).toLongLong());
-        e.allDay       = q.value(4).toInt() != 0;
-        e.category     = q.value(5).toString();
-        e.source       = q.value(6).toString();
-        e.createdBy    = q.value(7).toString();
-        e.lastEditedBy = q.value(8).toString();
-        e.rrule        = q.value(9).toString();
-        e.updatedAt    = q.value(10).toLongLong();
-        out.push_back(std::move(e));
+    while (q.next()) out.push_back(rowToEvent(q));
+    return out;
+}
+
+QVector<Event> EventRepository::expandedInRange(const QDateTime& from, const QDateTime& to) const {
+    QVector<Event> out;
+
+    // 1) Non-recurring events overlapping the window — standard query.
+    {
+        QSqlQuery q(m_db);
+        q.prepare(R"(
+            SELECT id, title, start_ts, end_ts, all_day, category, source,
+                   created_by, last_edited_by, rrule, updated_at
+            FROM events
+            WHERE (rrule IS NULL OR rrule = '')
+              AND start_ts < :to AND end_ts > :from
+            ORDER BY start_ts
+        )");
+        q.bindValue(":from", from.toSecsSinceEpoch());
+        q.bindValue(":to",   to.toSecsSinceEpoch());
+        if (q.exec()) {
+            while (q.next()) out.push_back(rowToEvent(q));
+        } else {
+            qWarning() << "Non-recurring range query failed:" << q.lastError().text();
+        }
     }
+
+    // 2) Recurring events whose series could touch the window.
+    {
+        QSqlQuery q(m_db);
+        q.prepare(R"(
+            SELECT id, title, start_ts, end_ts, all_day, category, source,
+                   created_by, last_edited_by, rrule, updated_at
+            FROM events
+            WHERE rrule IS NOT NULL AND rrule != '' AND start_ts < :to
+        )");
+        q.bindValue(":to", to.toSecsSinceEpoch());
+        if (!q.exec()) {
+            qWarning() << "Recurring range query failed:" << q.lastError().text();
+        } else {
+            while (q.next()) {
+                const Event base = rowToEvent(q);
+                const RRule rule = RRule::parse(base.rrule);
+                const qint64 durSec = base.start.secsTo(base.end);
+
+                if (!rule.isValid()) {
+                    // Unknown rule shape — treat as single occurrence if it overlaps.
+                    if (base.end > from && base.start < to) out.push_back(base);
+                    continue;
+                }
+                const QVector<QDateTime> instances = rule.expand(base.start, from, to);
+                for (const QDateTime& inst : instances) {
+                    Event copy = base;
+                    copy.start = inst;
+                    copy.end   = inst.addSecs(durSec);
+                    out.push_back(copy);
+                }
+            }
+        }
+    }
+
+    std::sort(out.begin(), out.end(),
+              [](const Event& a, const Event& b) { return a.start < b.start; });
     return out;
 }
 

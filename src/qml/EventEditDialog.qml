@@ -12,15 +12,18 @@ Dialog {
     title: editingId > 0 ? "Edit event" : "New event"
 
     property int editingId: 0
-    signal saved(int id, string evTitle, date start, date end, string category)
+    property string evRrule: ""
+    signal saved(int id, string evTitle, date start, date end, string category, string rrule)
     signal removed(int id)
 
-    function openFor(id, evTitle, start, end, category) {
+    function openFor(id, evTitle, start, end, category, rrule) {
         editingId = id;
         titleField.text = evTitle;
         startField.text = Qt.formatDateTime(start, "yyyy-MM-dd HH:mm");
         endField.text   = Qt.formatDateTime(end,   "yyyy-MM-dd HH:mm");
         categoryField.text = category;
+        evRrule = rrule || "";
+        rruleEditor.rrule = evRrule;
         open();
         Qt.callLater(function() {
             titleField.forceActiveFocus();
@@ -42,7 +45,8 @@ Dialog {
         var s = _parse(startField.text);
         var e = _parse(endField.text);
         if (e <= s) e = new Date(s.getTime() + 3600000);
-        saved(editingId, titleField.text.trim(), s, e, categoryField.text.trim());
+        saved(editingId, titleField.text.trim(), s, e,
+              categoryField.text.trim(), rruleEditor.rrule);
         close();
     }
 
@@ -135,6 +139,21 @@ Dialog {
             color: Theme.fg
             Keys.onReturnPressed: dialog._commit()
             Keys.onEnterPressed: dialog._commit()
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.sp6
+            Layout.rightMargin: Theme.sp6
+            Layout.preferredHeight: 1
+            color: Theme.divider
+        }
+
+        RecurrenceEditor {
+            id: rruleEditor
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.sp6
+            Layout.rightMargin: Theme.sp6
         }
 
         Item { Layout.preferredHeight: Theme.sp1 }

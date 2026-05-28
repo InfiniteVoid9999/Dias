@@ -5,6 +5,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QVariantMap>
 #include <QtSql/QSqlDatabase>
 
 namespace dias {
@@ -29,12 +30,15 @@ public:
     ObsidianIngest(EventRepository* events, TaskRepository* tasks,
                    QSqlDatabase db, QObject* parent = nullptr);
 
-    // Returns empty string on success, error message otherwise.
-    // imported/updated counts go to out-params if non-null.
-    Q_INVOKABLE QString ingestVault(const QString& vaultPath,
-                                    int* importedOut = nullptr,
-                                    int* updatedOut = nullptr,
-                                    int* skippedOut = nullptr);
+    // C++ entry point — empty error string on success, counts via out params.
+    QString ingestVault(const QString& vaultPath,
+                        int* importedOut = nullptr,
+                        int* updatedOut = nullptr,
+                        int* skippedOut = nullptr);
+
+    // QML-facing wrapper. Returns a map with keys:
+    //   ok (bool), error (string), imported (int), updated (int), skipped (int).
+    Q_INVOKABLE QVariantMap ingest(const QString& vaultPath);
 
     Q_INVOKABLE QString defaultVaultPath() const;
 

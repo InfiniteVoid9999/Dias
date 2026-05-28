@@ -103,6 +103,18 @@ ObsidianIngest::ObsidianIngest(EventRepository* events, TaskRepository* tasks,
                                QSqlDatabase db, QObject* parent)
     : QObject(parent), m_events(events), m_tasks(tasks), m_db(std::move(db)) {}
 
+QVariantMap ObsidianIngest::ingest(const QString& vaultPath) {
+    int imported = 0, updated = 0, skipped = 0;
+    const QString err = ingestVault(vaultPath, &imported, &updated, &skipped);
+    QVariantMap m;
+    m["ok"]       = err.isEmpty();
+    m["error"]    = err;
+    m["imported"] = imported;
+    m["updated"]  = updated;
+    m["skipped"]  = skipped;
+    return m;
+}
+
 QString ObsidianIngest::defaultVaultPath() const {
     return QDir::homePath() + "/Documents/To Fart or To Shit";
 }

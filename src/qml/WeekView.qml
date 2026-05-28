@@ -13,7 +13,7 @@ Item {
     readonly property real headerHeight: 64
 
     signal createAt(date day, int hour)
-    signal editEvent(int id, string evTitle, date start, date end, string category)
+    signal editEvent(int id, string evTitle, date start, date end, string category, string rrule)
     signal editTask(int id, string taskText, date due, bool hasDue)
 
     // ---- date helpers ----
@@ -208,6 +208,7 @@ Item {
                     required property string category
                     required property string source
                     required property bool agentRecent
+                    required property string rrule
 
                     readonly property real startHours: start.getHours() + start.getMinutes() / 60
                     readonly property real rawDurHours: Math.max(0.25, (end - start) / 3600000)
@@ -288,7 +289,7 @@ Item {
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: root.editEvent(block.id, block.title, block.start, block.end, block.category)
+                        onClicked: root.editEvent(block.id, block.title, block.start, block.end, block.category, block.rrule)
                     }
                 }
             }
