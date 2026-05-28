@@ -77,6 +77,7 @@ qt_add_qml_module(dias
         src/qml/TodoPanel.qml
         src/qml/RecurrenceEditor.qml
         src/qml/QuickAddPopup.qml
+        src/qml/CommandPalette.qml
 )
 
 target_link_libraries(dias PRIVATE

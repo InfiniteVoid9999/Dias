@@ -10,7 +10,18 @@ ApplicationWindow {
     width: 1400
     height: 900
     visible: true
-    title: "Dias"
+    title: {
+        var base = "Dias";
+        if (root.viewMode === "year") return base + " · " + EventModel.viewStart.getFullYear();
+        var d = EventModel.viewStart;
+        if (root.viewMode === "month") {
+            var m = new Date(d); m.setDate(m.getDate() + 14);
+            return base + " · " + Qt.formatDate(m, "MMMM yyyy");
+        }
+        if (root.viewMode === "day") return base + " · " + Qt.formatDate(d, "ddd, d MMM");
+        var e = new Date(d); e.setDate(e.getDate() + 6);
+        return base + " · " + Qt.formatDate(d, "d MMM") + " – " + Qt.formatDate(e, "d MMM");
+    }
     flags: Qt.Window | Qt.FramelessWindowHint
 
     // 0 = follow system, 1 = light, 2 = dark
@@ -63,6 +74,7 @@ ApplicationWindow {
     Shortcut { sequences: ["N", "Ctrl+N"]; enabled: !editDialog.visible && !taskDialog.visible && !quickAddPopup.visible; onActivated: quickAddPopup.openQuick() }
     Shortcut { sequences: ["Y"];           enabled: !editDialog.visible && !taskDialog.visible; onActivated: setYearView() }
     Shortcut { sequences: ["?", "Shift+/"]; enabled: !editDialog.visible && !taskDialog.visible; onActivated: helpPopup.open() }
+    Shortcut { sequences: ["Ctrl+K"];       enabled: !editDialog.visible && !taskDialog.visible; onActivated: cmdPalette.openPalette() }
 
     function currentView() {
         return viewLoader.item;
@@ -696,6 +708,31 @@ ApplicationWindow {
             statusPopup.show("Added: " + qaTitle);
             jumpToDate(start);
         }
+    }
+
+    // -------- command palette --------
+    CommandPalette {
+        id: cmdPalette
+        parent: root.overlay
+
+        actions: [
+            { glyph: "bolt",             title: "Quick add event…",         hint: "N",       run: () => quickAddPopup.openQuick() },
+            { glyph: "search",           title: "Search events…",           hint: "Ctrl+F",  run: () => searchPopup.openSearch() },
+            { glyph: "today",            title: "Jump to today",            hint: "T",       run: () => currentView().gotoToday() },
+            { glyph: "chevron_left",     title: "Previous period",          hint: "H / ←",   run: () => currentView().prev() },
+            { glyph: "chevron_right",    title: "Next period",              hint: "L / →",   run: () => currentView().next() },
+            { glyph: "view_day",         title: "Switch to Day view",       hint: "D",       run: setDayView },
+            { glyph: "view_week",        title: "Switch to Week view",      hint: "W",       run: setWeekView },
+            { glyph: "calendar_month",   title: "Switch to Month view",     hint: "M",       run: setMonthView },
+            { glyph: "calendar_view_month", title: "Switch to Year view",   hint: "Y",       run: setYearView },
+            { glyph: "brightness_auto",  title: "Theme: cycle Auto/Light/Dark", hint: "",    run: () => userTheme = (userTheme + 1) % 3 },
+            { glyph: "hub",              title: "Sync from Obsidian vault", hint: "",        run: doObsidianSync },
+            { glyph: "rss_feed",         title: "Subscribe to .ics URL…",   hint: "",        run: doIcsSync },
+            { glyph: "event_available",  title: "Sync from Google Calendar",hint: "",        run: doGCalSync },
+            { glyph: "file_download",    title: "Export to ~/Dias/export/", hint: "Ctrl+E",  run: doExport },
+            { glyph: "calendar_today",   title: "Open mini-calendar picker",hint: "",        run: () => miniCalPopup.open() },
+            { glyph: "keyboard",         title: "Keyboard shortcuts…",      hint: "?",       run: () => helpPopup.open() }
+        ]
     }
 
     // -------- search popup --------
